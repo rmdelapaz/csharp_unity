@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Learn to write C# code inside Unity — MonoBehaviour, the event lifecycle, gameplay scripting, ScriptableObjects, coroutines, performance, and more.">
+    <meta name="author" content="Ray de la Paz">
+    <title>C# Scripting in Unity - Home</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="icon" type="image/png" href="favicon.png">
+</head>
+<body>
+    <!-- Skip to main content for accessibility -->
+    <a href="#main-content" class="skip-to-main">Skip to main content</a>
+
+
+    <!-- Navigation -->
+    <nav class="main-nav">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo">C# Scripting in Unity</a>
+            <button id="mobile-menu-toggle" class="mobile-menu-toggle" aria-expanded="false" aria-controls="nav-links">
+                ☰
+            </button>
+            <div class="nav-links" id="nav-links">
+                <a href="#introduction">Introduction</a>
+                <a href="#modules">Modules</a>
+                <a href="#prerequisites">Prerequisites</a>
+                <a href="#resources">Resources</a>
+                <span class="nav-divider"></span>
+                <a href="https://rays-home.netlify.app/">Ray's House of Fun</a>
+                <a href="https://rays-home.netlify.app/contact">Contact</a>
+                <button id="theme-toggle" aria-label="Toggle dark/light mode">🌙</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Breadcrumb -->
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+        <ul>
+            <li aria-current="page">Home</li>
+        </ul>
+    </nav>
+
+    <!-- Main Content -->
+    <main id="main-content">
+        <div class="container">
+            <!-- Hero Section -->
+            <header>
+                <h1>🎮 Welcome to C# Scripting in Unity</h1>
+                <p class="lead">Learn the <em>programming</em> side of Unity game development — how C# actually works inside the engine, from your first <code>MonoBehaviour</code> to well-structured, high-performance game systems.</p>
+            </header>
+
+            <!-- Introduction Section -->
+            <section id="introduction" class="card">
+                <h2>📚 About This Course</h2>
+                <p>Most Unity tutorials focus on the editor and engine features. This course focuses on <strong>C# — the code you write</strong>. It's the bridge between knowing the C# language and building real games: how scripts attach to objects, how Unity calls your code, and the patterns that keep a growing game maintainable and fast.</p>
+                <p>It <strong>complements</strong> the engine-focused Unity courses (Fundamentals, Intermediate, Advanced) rather than repeating them — here, the star is the script.</p>
+
+                <h3>What You'll Learn</h3>
+                <ul>
+                    <li>How C# runs in Unity: <code>MonoBehaviour</code>, the GameObject/Component model, and the event-function lifecycle</li>
+                    <li>Accessing and wiring objects with <code>GetComponent</code> and <code>[SerializeField]</code></li>
+                    <li>Gameplay scripting: input, movement, physics, collisions, spawning and destroying objects</li>
+                    <li>Structuring code with ScriptableObjects, decoupled events, and coroutines vs. <code>async</code></li>
+                    <li>Building game systems: state managers, UI scripting, and saving/loading</li>
+                    <li>Unity-specific performance (avoiding GC in <code>Update</code>, object pooling) and testing</li>
+                    <li>A capstone that assembles a complete, well-structured gameplay system</li>
+                </ul>
+
+                <h3>Who This Course Is For</h3>
+                <ul>
+                    <li>Programmers who know C# basics and want to apply them in Unity</li>
+                    <li>Unity users comfortable in the editor who want to write better, cleaner scripts</li>
+                    <li>Anyone bridging from general C# to game development</li>
+                </ul>
+            </section>
+
+            <!-- Course Modules/Lessons -->
+            <section id="modules">
+                <h2>📖 Course Modules</h2>
+
+                <!-- Module 1 -->
+                <div class="card lesson-card">
+                    <h3>Module 1: Unity's C# Model</h3>
+                    <p>How C# runs inside Unity: components, the lifecycle, and wiring objects together.</p>
+                    <ul>
+                        <li><a href="lesson_01.html" class="lesson-link">Lesson 1.1: MonoBehaviour and the Component Model</a></li>
+                        <li><a href="lesson_02.html" class="lesson-link">Lesson 1.2: The Event Function Lifecycle</a></li>
+                        <li><a href="lesson_03.html" class="lesson-link">Lesson 1.3: Accessing GameObjects and Components</a></li>
+                    </ul>
+                </div>
+
+                <!-- Module 2 -->
+                <div class="card lesson-card">
+                    <h3>Module 2: Gameplay Scripting</h3>
+                    <p>Make things move, collide, spawn, and disappear.</p>
+                    <ul>
+                        <li><a href="lesson_04.html" class="lesson-link">Lesson 2.1: Input and Movement</a></li>
+                        <li><a href="lesson_05.html" class="lesson-link">Lesson 2.2: Physics and Collisions</a></li>
+                        <li><a href="lesson_06.html" class="lesson-link">Lesson 2.3: Instantiating and Destroying Objects</a></li>
+                    </ul>
+                </div>
+
+                <!-- Module 3 -->
+                <div class="card lesson-card">
+                    <h3>Module 3: Structuring Game Code</h3>
+                    <p>Organize gameplay with data assets, decoupled events, and time-based logic.</p>
+                    <ul>
+                        <li><a href="lesson_07.html" class="lesson-link">Lesson 3.1: ScriptableObjects for Data</a></li>
+                        <li><a href="lesson_08.html" class="lesson-link">Lesson 3.2: Events and Decoupling</a></li>
+                        <li><a href="lesson_09.html" class="lesson-link">Lesson 3.3: Coroutines and Async in Unity</a></li>
+                    </ul>
+                </div>
+
+                <!-- Module 4 -->
+                <div class="card lesson-card">
+                    <h3>Module 4: Systems and Managers</h3>
+                    <p>Build the systems that hold a game together: state, UI, and persistence.</p>
+                    <ul>
+                        <li><a href="lesson_10.html" class="lesson-link">Lesson 4.1: Game State and Managers</a></li>
+                        <li><a href="lesson_11.html" class="lesson-link">Lesson 4.2: UI Scripting</a></li>
+                        <li><a href="lesson_12.html" class="lesson-link">Lesson 4.3: Saving and Loading</a></li>
+                    </ul>
+                </div>
+
+                <!-- Module 5 -->
+                <div class="card lesson-card">
+                    <h3>Module 5: Quality and Performance</h3>
+                    <p>Write Unity C# that runs fast and stays maintainable, then ship a complete system.</p>
+                    <ul>
+                        <li><a href="lesson_13.html" class="lesson-link">Lesson 5.1: Unity Performance and Memory</a></li>
+                        <li><a href="lesson_14.html" class="lesson-link">Lesson 5.2: Debugging and the Unity Test Framework</a></li>
+                        <li><a href="lesson_15.html" class="lesson-link">Lesson 5.3: Capstone Project</a></li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- Prerequisites Section -->
+            <section id="prerequisites" class="card">
+                <h2>✅ Prerequisites</h2>
+                <p>This course is about applying C# in Unity, so you should already be comfortable with C# fundamentals:</p>
+                <ul>
+                    <li>Variables, types, control flow, and methods</li>
+                    <li>Classes and object-oriented programming (inheritance, interfaces)</li>
+                    <li>Collections and, ideally, events and basic async concepts</li>
+                </ul>
+                <p>All of this is covered in <strong>Introduction to C#</strong> (and expanded in the Intermediate course). For the engine and editor itself, see the companion <strong>Unity</strong> courses.</p>
+
+                <h3>Required Software</h3>
+                <ul>
+                    <li><strong>Unity</strong> (a recent version, e.g. Unity 6) installed via Unity Hub</li>
+                    <li>A code editor with C# support — <strong>VS Code</strong> or <strong>Visual Studio</strong></li>
+                </ul>
+            </section>
+
+            <!-- Resources Section -->
+            <section id="resources" class="card">
+                <h2>📚 Additional Resources</h2>
+
+                <h3>Official Documentation</h3>
+                <ul>
+                    <li><a href="https://docs.unity3d.com/Manual/ScriptingSection.html" target="_blank" rel="noopener">Unity Scripting Manual</a></li>
+                    <li><a href="https://docs.unity3d.com/ScriptReference/" target="_blank" rel="noopener">Unity Scripting API Reference</a></li>
+                    <li><a href="https://learn.microsoft.com/dotnet/csharp/" target="_blank" rel="noopener">Microsoft C# Documentation</a></li>
+                </ul>
+
+                <h3>Useful Links</h3>
+                <ul>
+                    <li><a href="https://learn.unity.com/" target="_blank" rel="noopener">Unity Learn</a></li>
+                    <li><a href="https://docs.unity3d.com/Manual/ExecutionOrder.html" target="_blank" rel="noopener">Order of execution for event functions</a></li>
+                </ul>
+
+                <h3>Companion Courses</h3>
+                <ul>
+                    <li><a href="https://rays-csharp.netlify.app/" target="_blank" rel="noopener">Introduction to C#</a></li>
+                    <li><a href="https://rays-unity.netlify.app/" target="_blank" rel="noopener">Unity Engine Course — Fundamentals</a></li>
+                </ul>
+            </section>
+
+            <!-- Search Section -->
+            <section class="card">
+                <h2>🔍 Search Course Content</h2>
+                <div style="position: relative;">
+                    <input type="text" id="search-input" placeholder="Search lessons, topics, or keywords..."
+                           aria-label="Search course content">
+                    <div id="search-results" style="display: none; position: absolute; top: 100%; left: 0; right: 0;"></div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+        <p>&copy; 2026 Ray de la Paz. All rights reserved.</p>
+        <div class="footer-links">
+            <a href="https://rays-home.netlify.app/">Ray's House of Fun</a>
+            <a href="https://rays-home.netlify.app/contact">Contact</a>
+            <a href="#" id="print-button">Print Page</a>
+        </div>
+        <p><small>Press <kbd>?</kbd> for keyboard shortcuts</small></p>
+    </footer>
+
+    <!-- JavaScript -->
+    <script src="js/clipboard.js"></script>
+    <script src="js/course-enhancements.js"></script>
+</body>
+</html>
