@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Debug Unity scripts and test them — Debug logging, Gizmos, breakpoints, and writing Edit Mode & Play Mode tests with the Unity Test Framework.">
+    <meta name="author" content="Ray de la Paz">
+    <title>Lesson 5.2: Debugging and the Unity Test Framework - C# Scripting in Unity</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="icon" type="image/png" href="favicon.png">
+    <!-- Mermaid — initialized by course-enhancements.js for theme awareness -->
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        window.__mermaid = mermaid;
+        // Initial config — JS will re-init on theme change
+        const isDark = localStorage.getItem('theme') === 'dark' ||
+            (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: isDark ? 'dark' : 'default',
+            themeVariables: isDark
+                ? { primaryColor: '#334155', primaryTextColor: '#e2e8f0', primaryBorderColor: '#6366f1', lineColor: '#94a3b8', secondaryColor: '#1e293b', tertiaryColor: '#0f172a' }
+                : { primaryColor: '#eff6ff', primaryTextColor: '#1e293b', primaryBorderColor: '#3b82f6', lineColor: '#64748b', secondaryColor: '#f8fafc', tertiaryColor: '#f1f5f9' }
+        });
+    </script>
+</head>
+<body>
+    <!-- Skip to main content for accessibility -->
+    <a href="#main-content" class="skip-to-main">Skip to main content</a>
+
+
+    <!-- Navigation -->
+    <nav class="main-nav">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo">C# Scripting in Unity</a>
+            <button id="mobile-menu-toggle" class="mobile-menu-toggle" aria-expanded="false" aria-controls="nav-links">
+                ☰
+            </button>
+            <div class="nav-links" id="nav-links">
+                <a href="index.html">Home</a>
+                <a href="index.html#modules">All Modules</a>
+                <span class="nav-divider"></span>
+                <a href="https://rays-home.netlify.app/">Ray's House of Fun</a>
+                <a href="https://rays-home.netlify.app/contact">Contact</a>
+                <button id="theme-toggle" aria-label="Toggle dark/light mode">🌙</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Breadcrumb -->
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+        <ul>
+            <li><a href="index.html">Home</a></li>
+            <li><a href="index.html#modules">Module 5</a></li>
+            <li aria-current="page">Lesson 5.2: Debugging and the Unity Test Framework</li>
+        </ul>
+    </nav>
+
+    <!-- Main Content -->
+    <main id="main-content">
+        <div class="container">
+            <!-- Lesson Header -->
+            <header>
+                <h1>📝 Lesson 5.2: Debugging and the Unity Test Framework</h1>
+                <p class="lead">Fast code (Lesson 5.1) still has to be <em>correct</em>. This lesson covers the two halves of reliability: <strong>debugging</strong> — finding and fixing bugs with logging, Gizmos, and breakpoints — and <strong>testing</strong> — writing automated checks with the Unity Test Framework so bugs stay fixed as your project grows.</p>
+
+                <!-- Learning objectives -->
+                <div class="card card-info">
+                    <h2>🎯 Learning Objectives</h2>
+                    <p>By the end of this lesson, you will be able to:</p>
+                    <ul>
+                        <li>Use <code>Debug.Log</code>/<code>LogWarning</code>/<code>LogError</code> effectively (with context objects)</li>
+                        <li>Visualize logic in the Scene view with <code>Debug.DrawRay</code> and <strong>Gizmos</strong></li>
+                        <li>Attach a debugger and use breakpoints to inspect runtime state</li>
+                        <li>Diagnose the classic Unity bugs (null/missing references, execution order)</li>
+                        <li>Write <strong>Edit Mode</strong> and <strong>Play Mode</strong> tests with the Unity Test Framework</li>
+                        <li>Structure code so gameplay logic is testable, separate from MonoBehaviours</li>
+                    </ul>
+                    <p><strong>Estimated Time:</strong> 60 minutes</p>
+                    <p><strong>Project:</strong> Debug a broken component with logging and Gizmos, then write unit tests for a pure-C# scoring rule.</p>
+                </div>
+            </header>
+
+            <!-- Sticky Table of Contents -->
+            <details class="card toc-card" open>
+                <summary aria-label="Toggle table of contents">
+                    <span class="toc-icon" aria-hidden="true">📑</span>
+                    <span class="toc-label">In This Lesson</span>
+                    <span class="toc-chevron" aria-hidden="true">▾</span>
+                </summary>
+                <nav aria-label="Table of Contents">
+                    <ol>
+                        <li><a href="#introduction" class="toc-link">Debugging Mindset</a></li>
+                        <li><a href="#logging" class="toc-link">Logging Well</a></li>
+                        <li><a href="#visual" class="toc-link">Visual Debugging: Gizmos</a></li>
+                        <li><a href="#breakpoints" class="toc-link">Breakpoints &amp; Common Bugs</a></li>
+                        <li><a href="#testing" class="toc-link">The Unity Test Framework</a></li>
+                        <li><a href="#testable" class="toc-link">Writing Testable Code</a></li>
+                        <li><a href="#exercise" class="toc-link">Exercise &amp; Quiz</a></li>
+                        <li><a href="#summary" class="toc-link">Summary</a></li>
+                    </ol>
+                </nav>
+            </details>
+
+            <!-- Section 1: Mindset -->
+            <section id="introduction" class="lesson-section">
+                <h2>Debugging Mindset</h2>
+                <p>Debugging is a science, not luck: form a hypothesis about what's wrong, gather evidence, and narrow it down. Unity gives you tools for each step — the Console for messages, Gizmos for seeing invisible logic, and a debugger for freezing time and inspecting state.</p>
+
+                <div class="mermaid">
+                    graph LR
+                    O["Observe the bug"] --> H["Hypothesis:<br/>what could cause it?"]
+                    H --> E["Gather evidence<br/>(log, gizmo, breakpoint)"]
+                    E --> N["Narrow down<br/>the cause"]
+                    N --> F["Fix &amp; verify"]
+                    F -->|"still wrong?"| H
+                    style E fill:#eff6ff,stroke:#3b82f6,stroke-width:2px
+                    style F fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                </div>
+
+                <blockquote>
+                    <strong>💡 The most common Unity bug isn't in your logic</strong> — it's a reference that's null, an event function that's misspelled (Lesson 1.2), or code running in the wrong order. Before suspecting complex logic, check the simple things: Is the reference assigned in the Inspector? Is the object active? Did <code>Awake</code> run before this?
+                </blockquote>
+            </section>
+
+            <!-- Section 2: Logging -->
+            <section id="logging" class="lesson-section">
+                <h2>Logging Well</h2>
+                <p>The <code>Debug</code> class writes to the Console. Three severity levels help you scan output — and errors/warnings can be filtered separately:</p>
+
+                <pre><code class="language-csharp">Debug.Log("Player spawned");                     // white — info
+Debug.LogWarning("Health below 10%");            // yellow — attention
+Debug.LogError("Missing weapon reference!");     // red — a real problem
+
+// Pass 'this' (or any Object) as a second argument: clicking the message
+// pings that object in the Hierarchy — invaluable for "which one broke?".
+Debug.LogError("Target not assigned", this);</code></pre>
+
+                <div class="card card-success">
+                    <h4>✅ Make logs useful, then remove them</h4>
+                    <p>Include <em>values</em>, not just labels: <code>Debug.Log($"Health: {current}/{max}")</code> beats <code>Debug.Log("took damage")</code>. Log <em>state</em> at decision points to see what the code actually saw. But logging every frame floods the Console and even allocates strings (Lesson 5.1) — remove or guard temporary logs when you're done. Wrap verbose logging in <code>[Conditional("DEBUG")]</code> methods or an <code>if (verbose)</code> flag so it's off in release.</p>
+                </div>
+
+                <div class="card card-warning">
+                    <h4>⚠️ Read the whole error, including the stack trace</h4>
+                    <p>A <code>NullReferenceException</code> in the Console expands to a <em>stack trace</em> — the chain of calls that led to it. Click it: it shows the exact file and line. Beginners often panic at the red text; the fix is usually right there in the first line of the trace ("object reference not set" + the line that dereferenced null).</p>
+                </div>
+            </section>
+
+            <!-- Section 3: Gizmos -->
+            <section id="visual" class="lesson-section">
+                <h2>Visual Debugging: Gizmos</h2>
+                <p>Some bugs are spatial — a detection radius that's wrong, a ray pointing the wrong way, a patrol path off by a bit. Numbers in the Console won't reveal these; <em>drawing</em> them will. Unity offers two visual tools:</p>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>Tool</th><th>Where</th><th>Use for</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td><code>Debug.DrawRay</code> / <code>DrawLine</code></td><td>Scene view (and Game view if Gizmos on)</td><td>Quick rays/lines from inside <code>Update</code></td></tr>
+                            <tr><td><code>OnDrawGizmos()</code></td><td>Scene view, always (even when not playing)</td><td>Persistent shapes — radii, bounds, waypoints</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <pre><code class="language-csharp">using UnityEngine;
+
+public class EnemyVision : MonoBehaviour
+{
+    [SerializeField] private float viewDistance = 10f;
+    [SerializeField] private float detectRadius = 3f;
+
+    void Update()
+    {
+        // Draw the forward view ray each frame (red), visible in the Scene view.
+        Debug.DrawRay(transform.position, transform.forward * viewDistance, Color.red);
+    }
+
+    // Gizmos draw in the editor even when not playing — great for tuning.
+    void OnDrawGizmosSelected()
+    {
+        Gizmos.color = Color.yellow;
+        Gizmos.DrawWireSphere(transform.position, detectRadius);   // see the detection range
+    }
+}</code></pre>
+
+                <div class="card card-info">
+                    <h4>💡 Gizmos make invisible logic visible</h4>
+                    <p>A <code>DrawWireSphere</code> at your detection radius instantly shows if it's too big or too small — no guessing at numbers. <code>OnDrawGizmos</code> runs always; <code>OnDrawGizmosSelected</code> only when the object is selected (less clutter). These calls are editor-only and cost nothing in a build. When a spatial thing "doesn't work," draw it before you theorize.</p>
+                </div>
+            </section>
+
+            <!-- Section 4: Breakpoints & bugs -->
+            <section id="breakpoints" class="lesson-section">
+                <h2>Breakpoints &amp; Common Bugs</h2>
+                <p>Logging shows values <em>after</em> the fact; a <strong>breakpoint</strong> freezes the game <em>at</em> a line so you can inspect everything — variable values, the call stack, and step through line by line. Attach your IDE (Visual Studio / Rider) to Unity ("Attach to Unity"/"Play"), set a breakpoint by clicking the gutter, and trigger the code.</p>
+
+                <div class="card card-success">
+                    <h4>✅ Breakpoint vs Debug.Log</h4>
+                    <p>Use <strong>logging</strong> for a quick trace or something that happens fast/often. Use a <strong>breakpoint</strong> when you need to poke around a specific moment — inspect several variables, check the call stack ("who called this?"), or step through branching logic. Breakpoints don't require editing and re-running code, but they pause the whole editor.</p>
+                </div>
+
+                <p>Most Unity bugs fall into a few recognizable buckets. Knowing the pattern speeds the fix:</p>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>Symptom</th><th>Likely cause</th><th>Check</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td><code>NullReferenceException</code></td><td>Reference never assigned, or lookup failed</td><td>Inspector slot filled? <code>GetComponent</code> found it? (Lesson 1.3)</td></tr>
+                            <tr><td><code>MissingReferenceException</code></td><td>The object was destroyed but still referenced</td><td>Guard with <code>!= null</code>; unsubscribe events (Lesson 3.2)</td></tr>
+                            <tr><td>Event function never runs</td><td>Typo / wrong case / wrong signature</td><td>Exact name &amp; params (Lesson 1.2); is the object active?</td></tr>
+                            <tr><td>Value is wrong on frame 1</td><td>Read in <code>Start</code> before another <code>Awake</code></td><td>Two-phase startup order (Lesson 1.2)</td></tr>
+                            <tr><td>Works in Editor, breaks in build</td><td>Editor-only API, or a missing scene/asset</td><td>Scene in Build Settings? (Lesson 4.1)</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Section 5: Test framework -->
+            <section id="testing" class="lesson-section">
+                <h2>The Unity Test Framework</h2>
+                <p>Debugging fixes a bug once. A <strong>test</strong> makes sure it stays fixed. The <strong>Unity Test Framework (UTF)</strong> builds on <strong>NUnit</strong> — the same framework from the Intermediate C# course — and runs from <em>Window → General → Test Runner</em>. There are two kinds:</p>
+
+                <div class="mermaid">
+                    graph TD
+                    UTF["Unity Test Framework"]
+                    UTF --> EM["Edit Mode tests<br/>run without Play mode<br/>(fast — pure logic)"]
+                    UTF --> PM["Play Mode tests<br/>run in a live scene<br/>(MonoBehaviours, physics, frames)"]
+                    style EM fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                    style PM fill:#eff6ff,stroke:#3b82f6,stroke-width:2px
+                </div>
+
+                <p>An <strong>Edit Mode</strong> test is a plain NUnit test — perfect for pure C# logic. It follows the <em>Arrange–Act–Assert</em> pattern you learned before:</p>
+                <pre><code class="language-csharp">using NUnit.Framework;
+
+public class ScoreRulesTests
+{
+    [Test]
+    public void ComboMultiplier_DoublesScore_AtThreeHits()
+    {
+        // Arrange
+        var rules = new ScoreRules();
+
+        // Act
+        int score = rules.Points(baseValue: 100, comboHits: 3);
+
+        // Assert
+        Assert.AreEqual(200, score);
+    }
+}</code></pre>
+
+                <p>A <strong>Play Mode</strong> test runs in a real scene and can span frames using <code>[UnityTest]</code> with an <code>IEnumerator</code> (the coroutine shape from Lesson 3.3) — so you can <code>yield</code> and check results after time passes:</p>
+                <pre><code class="language-csharp">using System.Collections;
+using UnityEngine;
+using UnityEngine.TestTools;   // [UnityTest]
+using NUnit.Framework;
+
+public class MovementTests
+{
+    [UnityTest]
+    public IEnumerator Player_MovesForward_OverTime()
+    {
+        // Arrange: build a live object with the component under test.
+        var go = new GameObject();
+        var mover = go.AddComponent&lt;PlayerMover&gt;();
+        Vector3 start = go.transform.position;
+
+        // Act: let a few frames pass.
+        yield return new WaitForSeconds(0.5f);
+
+        // Assert: it actually moved.
+        Assert.Greater(go.transform.position.z, start.z);
+    }
+}</code></pre>
+
+                <div class="card card-info">
+                    <h4>💡 Edit Mode vs Play Mode — pick the cheaper one</h4>
+                    <p>Prefer <strong>Edit Mode</strong> tests: they're fast, don't start Play mode, and are ideal for logic (scoring, inventory, state rules). Use <strong>Play Mode</strong> only when you truly need the running engine — physics, coroutines, real component interaction. Tests live in a special <em>test assembly</em> (the Test Runner can create the folder/asmdef for you).</p>
+                </div>
+            </section>
+
+            <!-- Section 6: Testable code -->
+            <section id="testable" class="lesson-section">
+                <h2>Writing Testable Code</h2>
+                <p>Here's the payoff of good architecture: <strong>logic that doesn't depend on Unity is trivial to test.</strong> A scoring rule buried inside a MonoBehaviour needs a running scene to test; the same rule in a plain C# class can be tested in milliseconds, in Edit Mode.</p>
+
+                <pre><code class="language-csharp">// ❌ Hard to test: logic tangled with MonoBehaviour + Unity state.
+public class ScoreManager : MonoBehaviour
+{
+    private int score;
+    void Update()
+    {
+        if (Input.GetKeyDown(KeyCode.Space))
+            score += 100 * (comboHits &gt;= 3 ? 2 : 1);   // rule hidden in Update
+    }
+}</code></pre>
+
+                <pre><code class="language-csharp">// ✅ Easy to test: the RULE is a pure class; the MonoBehaviour just calls it.
+public class ScoreRules   // no MonoBehaviour — plain C#, unit-testable
+{
+    public int Points(int baseValue, int comboHits)
+        =&gt; baseValue * (comboHits &gt;= 3 ? 2 : 1);
+}
+
+public class ScoreManager : MonoBehaviour
+{
+    private readonly ScoreRules rules = new();
+    private int score;
+
+    public void RegisterHit(int comboHits) =&gt; score += rules.Points(100, comboHits);
+}</code></pre>
+
+                <div class="card card-success">
+                    <h4>✅ Separate logic from the engine</h4>
+                    <p>This echoes the ScriptableObject lesson's "data vs behavior" split and 5.1's testable-code note: keep <em>decisions and rules</em> in plain C# classes, and let MonoBehaviours handle <em>Unity glue</em> (input, references, lifecycle). You get code that's easier to test, reuse, and reason about — and Edit Mode tests that run instantly.</p>
+                </div>
+
+                <blockquote>
+                    <strong>💡 What to test first:</strong> your <em>logic</em> — scoring, inventory limits, damage formulas, save/load round-trips, state-machine transitions (Lesson 4.1). These are where subtle bugs hide and where a fast Edit Mode test pays off every time you refactor. You don't need 100% coverage; test the rules that would hurt if they broke.
+                </blockquote>
+            </section>
+
+            <!-- Section 7: Exercise & Quiz -->
+            <section id="exercise" class="lesson-section">
+                <h2>Exercise &amp; Quiz</h2>
+
+                <div class="card card-info">
+                    <h3>🏋️ Exercise: Debug, then Test</h3>
+                    <p><strong>Objective:</strong> Practice both halves — visualize a bug with Gizmos, then lock a rule down with a unit test.</p>
+
+                    <h4>Instructions:</h4>
+                    <ol>
+                        <li>Add the <code>EnemyVision</code> script (Section 3) to an object. Use <code>OnDrawGizmosSelected</code> to draw its detection radius and <code>Debug.DrawRay</code> for its view direction; tune the values by <em>seeing</em> them in the Scene view.</li>
+                        <li>Extract a pure-C# <code>ScoreRules</code> class with <code>int Points(int baseValue, int comboHits)</code> that doubles the score at 3+ combo hits.</li>
+                        <li>Open <em>Window → General → Test Runner</em>, create an <strong>Edit Mode</strong> test assembly, and write tests for: 1 hit (no bonus), 3 hits (doubled), and 5 hits (doubled).</li>
+                        <li>Run the tests — all green. Then change the rule to a bug (e.g. <code>&gt; 3</code> instead of <code>&gt;= 3</code>) and watch the 3-hit test go red, proving the test catches it.</li>
+                        <li>Fix it back to green. You now have a rule that can't silently break again.</li>
+                    </ol>
+
+                    <h4>Starter Code:</h4>
+                    <pre><code class="language-csharp">public class ScoreRules
+{
+    // TODO: double the base value when comboHits is 3 or more.
+    public int Points(int baseValue, int comboHits) =&gt; baseValue;
+}</code></pre>
+                    <pre><code class="language-csharp">using NUnit.Framework;
+
+public class ScoreRulesTests
+{
+    // TODO: [Test] methods for 1 hit, 3 hits, 5 hits using Assert.AreEqual.
+}</code></pre>
+
+                    <details>
+                        <summary>💡 Hint</summary>
+                        <p>Rule: <code>baseValue * (comboHits &gt;= 3 ? 2 : 1)</code>. Each test: Arrange <code>var rules = new ScoreRules();</code>, Act <code>int result = rules.Points(100, hits);</code>, Assert <code>Assert.AreEqual(expected, result);</code>. Expected: 1 hit → 100, 3 hits → 200, 5 hits → 200.</p>
+                    </details>
+
+                    <details>
+                        <summary>✅ Solution</summary>
+                        <pre><code class="language-csharp">public class ScoreRules
+{
+    public int Points(int baseValue, int comboHits)
+        =&gt; baseValue * (comboHits &gt;= 3 ? 2 : 1);
+}</code></pre>
+                        <pre><code class="language-csharp">using NUnit.Framework;
+
+public class ScoreRulesTests
+{
+    [Test]
+    public void OneHit_NoBonus()
+    {
+        var rules = new ScoreRules();
+        Assert.AreEqual(100, rules.Points(100, 1));
+    }
+
+    [Test]
+    public void ThreeHits_Doubled()
+    {
+        var rules = new ScoreRules();
+        Assert.AreEqual(200, rules.Points(100, 3));
+    }
+
+    [Test]
+    public void FiveHits_Doubled()
+    {
+        var rules = new ScoreRules();
+        Assert.AreEqual(200, rules.Points(100, 5));
+    }
+}</code></pre>
+                        <p>Because <code>ScoreRules</code> is plain C#, these are fast Edit Mode tests — no Play mode, no scene. Break the rule and a test turns red immediately; that's a regression caught before it ever reaches the game.</p>
+                    </details>
+                </div>
+
+                <!-- Quiz Section -->
+                <div class="card quiz-container">
+                    <h3>🎯 Quick Quiz</h3>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 1:</strong> What's the advantage of passing <code>this</code> to <code>Debug.LogError("...", this)</code>?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="It doesn't change the severity — it's still an error.">
+                                A) It upgrades the message to a higher severity.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! The context object makes clicking the console message ping that exact GameObject in the Hierarchy — you instantly know which one logged it.">
+                                B) Clicking the message highlights the exact object that logged it in the Hierarchy.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="It doesn't stop play — LogError just reports; it doesn't pause by itself.">
+                                C) It pauses the game automatically.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 2:</strong> You want to test a pure scoring formula quickly, without starting the game. Which test type fits?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! Edit Mode tests run without Play mode — ideal for pure C# logic like a scoring rule.">
+                                A) An <strong>Edit Mode</strong> test — it runs without entering Play mode.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="Play Mode is heavier and only needed when you require the running engine.">
+                                B) A <strong>Play Mode</strong> test, because all tests need a running scene.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="You don't need physics or frames to test a formula.">
+                                C) A <code>[UnityTest]</code> with <code>yield return</code>, to wait for frames.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 3:</strong> Why extract a scoring rule into a plain C# class instead of leaving it in a MonoBehaviour's <code>Update</code>?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="Plain classes aren't inherently faster to execute here — the benefit is testability and clarity.">
+                                A) Plain classes always run faster than MonoBehaviours.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! Logic with no Unity dependency can be unit-tested instantly in Edit Mode and reused/reasoned about more easily.">
+                                B) Logic with no Unity dependency can be unit-tested instantly and reused more easily.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="MonoBehaviours can hold logic — the point is that separating it makes it testable.">
+                                C) MonoBehaviours aren't allowed to contain any logic.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section 8: Summary -->
+            <section id="summary" class="lesson-section">
+                <h2>Summary</h2>
+
+                <div class="card card-success">
+                    <h3>🎉 Key Takeaways</h3>
+                    <ul>
+                        <li>Debug scientifically: observe → hypothesize → gather evidence → narrow → fix. Suspect the simple causes (null refs, typos, order) first.</li>
+                        <li><code>Debug.Log</code>/<code>LogWarning</code>/<code>LogError</code> — include values, pass <code>this</code> as context to ping the object, and read the full stack trace. Remove noisy temporary logs.</li>
+                        <li>Use <strong>Gizmos</strong> (<code>OnDrawGizmos</code>) and <code>Debug.DrawRay</code> to make spatial logic visible; use <strong>breakpoints</strong> to freeze and inspect runtime state.</li>
+                        <li>Know the classic Unity bug patterns: <code>NullReference</code>/<code>MissingReference</code>, misspelled event functions, execution-order surprises, Editor-vs-build differences.</li>
+                        <li>The <strong>Unity Test Framework</strong> (NUnit-based): <strong>Edit Mode</strong> tests for fast pure logic, <strong>Play Mode</strong> (<code>[UnityTest]</code>) for engine behavior across frames. Follow Arrange–Act–Assert.</li>
+                        <li>Keep <strong>logic in plain C# classes</strong>, MonoBehaviours as glue — testable, reusable, and easy to reason about.</li>
+                    </ul>
+                </div>
+
+                <h3>📚 Additional Resources</h3>
+                <ul>
+                    <li><a href="https://docs.unity3d.com/ScriptReference/Debug.html" target="_blank" rel="noopener">Scripting Reference — Debug (Log, DrawRay…)</a></li>
+                    <li><a href="https://docs.unity3d.com/ScriptReference/MonoBehaviour.OnDrawGizmos.html" target="_blank" rel="noopener">Scripting Reference — OnDrawGizmos</a></li>
+                    <li><a href="https://docs.unity3d.com/Packages/com.unity.test-framework@1.4/manual/index.html" target="_blank" rel="noopener">Manual — Unity Test Framework</a></li>
+                    <li><a href="https://docs.unity3d.com/Manual/ManagedCodeDebugging.html" target="_blank" rel="noopener">Manual — Debugging C# code (breakpoints)</a></li>
+                </ul>
+
+                <h3>🚀 What's Next?</h3>
+                <p>You can build fast, correct, well-tested Unity C#. Time to put it <em>all</em> together. Lesson 5.3, the <strong>Capstone Project</strong>, guides you through building a complete gameplay system — components, lifecycle, input, physics, data, events, managers, UI, save/load, and performance — everything from this course in one cohesive build.</p>
+
+                <!-- Encouragement Card -->
+                <div class="card card-accent" style="text-align: center; padding: 2rem;">
+                    <h3>🎉 Reliable and verified!</h3>
+                    <p>You can now hunt down any bug and write tests that keep it dead. That confidence is what lets you build big without fear of breaking what works.</p>
+                </div>
+            </section>
+
+            <!-- Lesson Navigation -->
+            <nav class="lesson-nav" aria-label="Lesson Navigation">
+                <a href="lesson_13.html" class="prev-lesson">← Previous: Lesson 5.1 — Unity Performance and Memory</a>
+                <a href="index.html" class="home-link">🏠 Course Home</a>
+                <a href="lesson_15.html" class="next-lesson">Next: Lesson 5.3 — Capstone Project →</a>
+            </nav>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+        <p>&copy; 2026 Ray de la Paz. All rights reserved.</p>
+        <div class="footer-links">
+            <a href="https://rays-home.netlify.app/">Ray's House of Fun</a>
+            <a href="https://rays-home.netlify.app/contact">Contact</a>
+            <a href="#" id="print-button">Print Page</a>
+        </div>
+        <p><small>Press <kbd>?</kbd> for keyboard shortcuts</small></p>
+    </footer>
+
+    <!-- JavaScript -->
+    <script src="js/clipboard.js"></script>
+    <script src="js/course-enhancements.js"></script>
+</body>
+</html>

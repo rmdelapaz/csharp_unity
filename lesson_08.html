@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Decouple Unity systems with events — C# events, the OnEnable/OnDisable subscribe pattern, UnityEvents in the Inspector, and ScriptableObject event channels.">
+    <meta name="author" content="Ray de la Paz">
+    <title>Lesson 3.2: Events and Decoupling - C# Scripting in Unity</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="icon" type="image/png" href="favicon.png">
+    <!-- Mermaid — initialized by course-enhancements.js for theme awareness -->
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        window.__mermaid = mermaid;
+        // Initial config — JS will re-init on theme change
+        const isDark = localStorage.getItem('theme') === 'dark' ||
+            (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: isDark ? 'dark' : 'default',
+            themeVariables: isDark
+                ? { primaryColor: '#334155', primaryTextColor: '#e2e8f0', primaryBorderColor: '#6366f1', lineColor: '#94a3b8', secondaryColor: '#1e293b', tertiaryColor: '#0f172a' }
+                : { primaryColor: '#eff6ff', primaryTextColor: '#1e293b', primaryBorderColor: '#3b82f6', lineColor: '#64748b', secondaryColor: '#f8fafc', tertiaryColor: '#f1f5f9' }
+        });
+    </script>
+</head>
+<body>
+    <!-- Skip to main content for accessibility -->
+    <a href="#main-content" class="skip-to-main">Skip to main content</a>
+
+
+    <!-- Navigation -->
+    <nav class="main-nav">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo">C# Scripting in Unity</a>
+            <button id="mobile-menu-toggle" class="mobile-menu-toggle" aria-expanded="false" aria-controls="nav-links">
+                ☰
+            </button>
+            <div class="nav-links" id="nav-links">
+                <a href="index.html">Home</a>
+                <a href="index.html#modules">All Modules</a>
+                <span class="nav-divider"></span>
+                <a href="https://rays-home.netlify.app/">Ray's House of Fun</a>
+                <a href="https://rays-home.netlify.app/contact">Contact</a>
+                <button id="theme-toggle" aria-label="Toggle dark/light mode">🌙</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Breadcrumb -->
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+        <ul>
+            <li><a href="index.html">Home</a></li>
+            <li><a href="index.html#modules">Module 3</a></li>
+            <li aria-current="page">Lesson 3.2: Events and Decoupling</li>
+        </ul>
+    </nav>
+
+    <!-- Main Content -->
+    <main id="main-content">
+        <div class="container">
+            <!-- Lesson Header -->
+            <header>
+                <h1>📝 Lesson 3.2: Events and Decoupling</h1>
+                <p class="lead">When the player takes damage, the health bar, the score, the audio, and the screen shake all need to know — but the player shouldn't have to hold a reference to every one of them. <strong>Events</strong> let a component <em>announce</em> that something happened and let anyone interested <em>react</em>, without the two ever knowing about each other.</p>
+
+                <!-- Learning objectives -->
+                <div class="card card-info">
+                    <h2>🎯 Learning Objectives</h2>
+                    <p>By the end of this lesson, you will be able to:</p>
+                    <ul>
+                        <li>Explain <strong>tight coupling</strong> and why it makes games hard to change</li>
+                        <li>Use C# <code>event</code>s and <code>Action</code> to broadcast from a publisher to many subscribers</li>
+                        <li>Apply the <code>OnEnable</code>/<code>OnDisable</code> subscribe/unsubscribe pattern correctly (Lesson 1.2, completed)</li>
+                        <li>Wire reactions in the Inspector with <code>UnityEvent</code></li>
+                        <li>Use a <strong>ScriptableObject event channel</strong> to decouple systems across scenes</li>
+                        <li>Choose the right event mechanism for a given situation</li>
+                    </ul>
+                    <p><strong>Estimated Time:</strong> 60 minutes</p>
+                    <p><strong>Project:</strong> A <code>Health</code> component that raises an event on damage, with independent listeners (UI, audio) reacting — none referencing each other.</p>
+                </div>
+            </header>
+
+            <!-- Sticky Table of Contents -->
+            <details class="card toc-card" open>
+                <summary aria-label="Toggle table of contents">
+                    <span class="toc-icon" aria-hidden="true">📑</span>
+                    <span class="toc-label">In This Lesson</span>
+                    <span class="toc-chevron" aria-hidden="true">▾</span>
+                </summary>
+                <nav aria-label="Table of Contents">
+                    <ol>
+                        <li><a href="#introduction" class="toc-link">The Coupling Problem</a></li>
+                        <li><a href="#csharp-events" class="toc-link">C# Events in Unity</a></li>
+                        <li><a href="#subscribe" class="toc-link">The Subscribe/Unsubscribe Pattern</a></li>
+                        <li><a href="#unityevents" class="toc-link">UnityEvents in the Inspector</a></li>
+                        <li><a href="#channels" class="toc-link">ScriptableObject Event Channels</a></li>
+                        <li><a href="#which" class="toc-link">Which Should You Use?</a></li>
+                        <li><a href="#exercise" class="toc-link">Exercise &amp; Quiz</a></li>
+                        <li><a href="#summary" class="toc-link">Summary</a></li>
+                    </ol>
+                </nav>
+            </details>
+
+            <!-- Section 1: Coupling problem -->
+            <section id="introduction" class="lesson-section">
+                <h2>The Coupling Problem</h2>
+                <p>Here's the naive way to make things react when the player is hurt: give the <code>Player</code> a reference to everything that cares.</p>
+
+                <pre><code class="language-csharp">// ❌ Tightly coupled: Player must know about every reactor.
+public class Player : MonoBehaviour
+{
+    [SerializeField] private HealthBar healthBar;
+    [SerializeField] private ScoreManager scoreManager;
+    [SerializeField] private AudioManager audioManager;
+    [SerializeField] private CameraShake cameraShake;
+
+    void TakeDamage(int amount)
+    {
+        health -= amount;
+        healthBar.Refresh(health);        // Player now depends on HealthBar…
+        scoreManager.LosePoints(amount);  // …and ScoreManager…
+        audioManager.PlayHurt();          // …and AudioManager…
+        cameraShake.Shake();              // …and CameraShake.
+    }
+}</code></pre>
+
+                <div class="card card-accent">
+                    <h4>📖 Definition</h4>
+                    <p><strong>Tight coupling</strong> means one class directly depends on the concrete details of others. The <code>Player</code> above can't compile or be reused without <em>all four</em> of those classes. Add a fifth reactor and you must edit <code>Player</code>. That's fragile and doesn't scale.</p>
+                </div>
+
+                <p>The fix is to invert the relationship. Instead of the Player <em>calling</em> each reactor, it simply <strong>announces</strong> "I took damage." Reactors <em>subscribe</em> to that announcement. The Player no longer knows — or cares — who's listening.</p>
+
+                <div class="mermaid">
+                    graph TD
+                    subgraph Coupled["❌ Tight coupling"]
+                        P1["Player"] --> HB1["HealthBar"]
+                        P1 --> SM1["ScoreManager"]
+                        P1 --> AM1["AudioManager"]
+                        P1 --> CS1["CameraShake"]
+                    end
+                    subgraph Decoupled["✅ Event-driven"]
+                        P2["Player<br/>raises OnDamaged"] --> EV["event"]
+                        EV -.->|"subscribes"| HB2["HealthBar"]
+                        EV -.->|"subscribes"| SM2["ScoreManager"]
+                        EV -.->|"subscribes"| AM2["AudioManager"]
+                    end
+                    style P1 fill:#fdecea,stroke:#c0392b,stroke-width:2px
+                    style P2 fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                    style EV fill:#eff6ff,stroke:#3b82f6,stroke-width:2px
+                </div>
+            </section>
+
+            <!-- Section 2: C# events -->
+            <section id="csharp-events" class="lesson-section">
+                <h2>C# Events in Unity</h2>
+                <p>You met delegates and events in the Intermediate C# course; here they earn their keep. A quick recap of the vocabulary:</p>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>Term</th><th>Meaning</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td><code>Action</code></td><td>A built-in delegate type for a method returning <code>void</code>. <code>Action&lt;int&gt;</code> takes one <code>int</code> argument.</td></tr>
+                            <tr><td><code>event</code></td><td>A keyword that wraps a delegate so outsiders may only <code>+=</code>/<code>-=</code> (subscribe/unsubscribe), not invoke or overwrite it.</td></tr>
+                            <tr><td>Publisher</td><td>The class that declares and raises the event (the <code>Health</code> component).</td></tr>
+                            <tr><td>Subscriber</td><td>A class that registers a method to run when the event fires (the UI, audio…).</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <p>Here's <code>Health</code> as a publisher. It exposes an <code>event</code> and <em>raises</em> it when damage happens — with no idea who is listening:</p>
+
+                <pre><code class="language-csharp">using System;
+using UnityEngine;
+
+public class Health : MonoBehaviour
+{
+    [SerializeField] private int maxHealth = 100;
+    private int current;
+
+    // The announcements this component can make. Others subscribe; only Health raises them.
+    public event Action&lt;int&gt; Damaged;    // passes the new health value
+    public event Action Died;            // no data needed
+
+    void Awake() =&gt; current = maxHealth;
+
+    public void TakeDamage(int amount)
+    {
+        current -= amount;
+
+        // Raise the event. The ?.Invoke guards against "nobody is subscribed" (null).
+        Damaged?.Invoke(current);
+
+        if (current &lt;= 0)
+            Died?.Invoke();
+    }
+}</code></pre>
+
+                <div class="card card-info">
+                    <h4>💡 Why <code>?.Invoke(...)</code>?</h4>
+                    <p>An event with no subscribers is <code>null</code>. Calling <code>Damaged(current)</code> on a null event throws. The null-conditional <code>Damaged?.Invoke(current)</code> only fires if there's at least one subscriber — the standard, safe way to raise a C# event. (This is a plain-C# reference, not a Unity object, so <code>?.</code> is correct here — unlike the Unity-object caveat from Lesson 1.3.)</p>
+                </div>
+
+                <p>Notice how small and self-contained <code>Health</code> is now. It depends on <em>nothing</em> in your game. You could drop it into a totally different project unchanged.</p>
+            </section>
+
+            <!-- Section 3: Subscribe pattern -->
+            <section id="subscribe" class="lesson-section">
+                <h2>The Subscribe/Unsubscribe Pattern</h2>
+                <p>Back in Lesson 1.2 we promised this: <strong>subscribe in <code>OnEnable</code>, unsubscribe in <code>OnDisable</code>.</strong> Now you can see why it matters. A subscriber registers a method and <em>must</em> remove it, or it leaks — and worse, a destroyed object's method may still get called, throwing errors.</p>
+
+                <pre><code class="language-csharp">public class HealthBarUI : MonoBehaviour
+{
+    [SerializeField] private Health health;   // the publisher to listen to
+
+    void OnEnable()
+    {
+        health.Damaged += UpdateBar;   // start listening
+    }
+
+    void OnDisable()
+    {
+        health.Damaged -= UpdateBar;   // ALWAYS stop listening (mirror image)
+    }
+
+    private void UpdateBar(int newHealth)
+    {
+        Debug.Log($"Health bar now shows {newHealth}");
+    }
+}</code></pre>
+
+                <div class="mermaid">
+                    graph LR
+                    OE["OnEnable()"] -->|"+="| SUB["Subscribed &amp; reacting"]
+                    SUB -->|"-="| OD["OnDisable()"]
+                    OD --> CLEAN["Unsubscribed — no leak,<br/>no calls on dead objects"]
+                    style OE fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                    style OD fill:#eff6ff,stroke:#3b82f6,stroke-width:2px
+                </div>
+
+                <div class="card card-warning">
+                    <h4>⚠️ Forgetting to unsubscribe is a real bug</h4>
+                    <p>If you subscribe but never unsubscribe: (1) the publisher keeps a reference to your method, so your object can't be garbage-collected — a <strong>memory leak</strong>; and (2) if your object is destroyed while still subscribed, the next event calls a method on a dead object, throwing a <code>MissingReferenceException</code>. The <code>OnEnable</code>/<code>OnDisable</code> pair prevents both because Unity guarantees they mirror each other (Lesson 1.2), including at destroy time (<code>OnDisable</code> runs before <code>OnDestroy</code>).</p>
+                </div>
+
+                <blockquote>
+                    <strong>💡 The golden rule:</strong> every <code>+=</code> needs a matching <code>-=</code>. Put them in <code>OnEnable</code>/<code>OnDisable</code> and you never have to think about it again.
+                </blockquote>
+            </section>
+
+            <!-- Section 4: UnityEvents -->
+            <section id="unityevents" class="lesson-section">
+                <h2>UnityEvents in the Inspector</h2>
+                <p>C# events are code-only — great for programmers, invisible to designers. <code>UnityEvent</code> is Unity's serializable event that shows up <em>in the Inspector</em>, so non-programmers can hook up reactions by dragging, exactly like a Button's <em>On Click ()</em> list (which is a UnityEvent).</p>
+
+                <pre><code class="language-csharp">using UnityEngine;
+using UnityEngine.Events;   // UnityEvent lives here
+
+public class Interactable : MonoBehaviour
+{
+    // Appears as a drag-and-drop event list in the Inspector.
+    public UnityEvent onInteract;
+
+    public UnityEvent&lt;int&gt; onScoreAwarded;   // typed variant, passes an int
+
+    void Interact()
+    {
+        onInteract.Invoke();        // note: UnityEvent uses .Invoke(), no ?.
+        onScoreAwarded.Invoke(10);
+    }
+}</code></pre>
+
+                <p>In the Inspector, <code>onInteract</code> becomes a list where a designer adds a target object and picks a public method to call — no code needed to connect a door to its "open" sound.</p>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th></th><th>C# <code>event</code></th><th><code>UnityEvent</code></th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Wired by</td><td>Code (<code>+=</code>)</td><td>Designers in the Inspector (or code)</td></tr>
+                            <tr><td>Visible in Inspector</td><td>❌ No</td><td>✅ Yes</td></tr>
+                            <tr><td>Performance</td><td>Fastest</td><td>Slight overhead (reflection/serialization)</td></tr>
+                            <tr><td>Best for</td><td>System-to-system, high-frequency, programmer-facing</td><td>Designer-facing hooks, buttons, one-off wiring</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="card card-info">
+                    <h4>💡 You've used UnityEvents already</h4>
+                    <p>Every UI Button's <em>On Click ()</em> is a <code>UnityEvent</code>. When you drag a GameObject in and choose a method, you're subscribing in the Inspector. Lesson 4.2 (UI Scripting) leans on this.</p>
+                </div>
+            </section>
+
+            <!-- Section 5: SO event channels -->
+            <section id="channels" class="lesson-section">
+                <h2>ScriptableObject Event Channels</h2>
+                <p>C# events need the subscriber to hold a reference to the publisher (<code>[SerializeField] private Health health;</code>). That's fine within one object, but awkward when a system in one scene must talk to a system in another, or when you don't want any direct reference at all. The elegant Unity solution combines Lesson 3.1 with events: an <strong>event channel</strong> — a ScriptableObject that <em>is</em> the event.</p>
+
+                <pre><code class="language-csharp">using System;
+using UnityEngine;
+
+// The event lives as an ASSET. Publishers and subscribers both reference the asset,
+// not each other.
+[CreateAssetMenu(menuName = "Events/Game Event")]
+public class GameEventChannel : ScriptableObject
+{
+    public event Action Raised;
+
+    public void Raise() =&gt; Raised?.Invoke();
+}</code></pre>
+
+                <pre><code class="language-csharp">// Publisher: raises the channel. Knows nothing about listeners.
+public class Player : MonoBehaviour
+{
+    [SerializeField] private GameEventChannel playerDied;   // drag the asset in
+
+    void Die() =&gt; playerDied.Raise();
+}
+
+// Subscriber: listens to the same channel asset. Knows nothing about the Player.
+public class GameOverScreen : MonoBehaviour
+{
+    [SerializeField] private GameEventChannel playerDied;   // same asset
+
+    void OnEnable()  =&gt; playerDied.Raised += Show;
+    void OnDisable() =&gt; playerDied.Raised -= Show;
+
+    private void Show() =&gt; Debug.Log("GAME OVER");
+}</code></pre>
+
+                <div class="mermaid">
+                    graph LR
+                    PUB["Player<br/>(publisher)"] -->|"Raise()"| CH["PlayerDied<br/>(ScriptableObject channel asset)"]
+                    CH -.->|"Raised event"| S1["GameOverScreen"]
+                    CH -.->|"Raised event"| S2["AudioManager"]
+                    CH -.->|"Raised event"| S3["Analytics"]
+                    style CH fill:#eff6ff,stroke:#3b82f6,stroke-width:2px
+                    style PUB fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                </div>
+
+                <div class="card card-success">
+                    <h4>✅ Why this is powerful</h4>
+                    <p>The publisher and every subscriber reference only the <em>channel asset</em> — never each other. You can add or remove listeners, move them to other scenes, or drop the whole system into another project, and nothing else changes. It's the ultimate decoupling: even the reference is to shared data, not to a specific object. Same <code>OnEnable</code>/<code>OnDisable</code> rule still applies.</p>
+                </div>
+            </section>
+
+            <!-- Section 6: Which to use -->
+            <section id="which" class="lesson-section">
+                <h2>Which Should You Use?</h2>
+                <p>Three mechanisms, three sweet spots. Reach for the simplest that fits.</p>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>Mechanism</th><th>Reach for it when…</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td><strong>C# <code>event</code> / <code>Action</code></strong></td><td>Systems talk in code, the subscriber can reference the publisher, and you want speed and simplicity. The default.</td></tr>
+                            <tr><td><strong><code>UnityEvent</code></strong></td><td>Designers should wire the reaction in the Inspector — buttons, triggers, one-off hooks.</td></tr>
+                            <tr><td><strong>SO event channel</strong></td><td>Publisher and subscriber shouldn't reference each other at all — cross-scene, cross-system, highly reusable architecture.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <blockquote>
+                    <strong>💡 Don't over-engineer.</strong> Events are for decoupling things that genuinely benefit from it (one-to-many, or systems that shouldn't know each other). A component calling a method on its own child doesn't need an event — a direct call is clearer. Decouple where change hurts, not everywhere.
+                </blockquote>
+
+                <div class="card card-warning">
+                    <h4>⚠️ Debugging trade-off</h4>
+                    <p>Decoupling has a cost: with events, "who reacts to this?" isn't visible from the publisher — you can't just Ctrl-click to the callee. That's the flip side of flexibility. Name events clearly (<code>Damaged</code>, <code>PlayerDied</code>), and don't scatter events where a plain call would read better.</p>
+                </div>
+            </section>
+
+            <!-- Section 7: Exercise & Quiz -->
+            <section id="exercise" class="lesson-section">
+                <h2>Exercise &amp; Quiz</h2>
+
+                <div class="card card-info">
+                    <h3>🏋️ Exercise: Decouple the Damage Reactions</h3>
+                    <p><strong>Objective:</strong> Make <code>Health</code> broadcast a damage event, and have two independent listeners react — with no listener referencing another.</p>
+
+                    <h4>Instructions:</h4>
+                    <ol>
+                        <li>Write the <code>Health</code> publisher (Section 2) with a <code>public event Action&lt;int&gt; Damaged;</code> raised in <code>TakeDamage</code>.</li>
+                        <li>Write <code>HealthBarUI</code> that subscribes in <code>OnEnable</code>, unsubscribes in <code>OnDisable</code>, and logs the new health.</li>
+                        <li>Write a second listener <code>HurtAudio</code> that subscribes the same way and logs "Ouch!" — it must <em>not</em> know about <code>HealthBarUI</code>.</li>
+                        <li>Call <code>TakeDamage</code> (e.g. on a key press) and confirm <em>both</em> listeners react from one event.</li>
+                        <li>Bonus: temporarily comment out the <code>-=</code> in one listener, destroy its object during play, then damage again — observe the error, then restore the unsubscribe.</li>
+                    </ol>
+
+                    <h4>Starter Code:</h4>
+                    <pre><code class="language-csharp">using System;
+using UnityEngine;
+
+public class Health : MonoBehaviour
+{
+    [SerializeField] private int maxHealth = 100;
+    private int current;
+
+    public event Action&lt;int&gt; Damaged;
+
+    void Awake() =&gt; current = maxHealth;
+
+    public void TakeDamage(int amount)
+    {
+        // TODO: reduce current, then raise Damaged with the new value.
+    }
+}</code></pre>
+
+                    <details>
+                        <summary>💡 Hint</summary>
+                        <p>Raise with <code>Damaged?.Invoke(current);</code> after subtracting. Each listener does <code>health.Damaged += Method;</code> in <code>OnEnable</code> and <code>health.Damaged -= Method;</code> in <code>OnDisable</code>. Because both subscribe to the same publisher, one <code>TakeDamage</code> call fans out to all subscribers automatically.</p>
+                    </details>
+
+                    <details>
+                        <summary>✅ Solution</summary>
+                        <pre><code class="language-csharp">using System;
+using UnityEngine;
+
+public class Health : MonoBehaviour
+{
+    [SerializeField] private int maxHealth = 100;
+    private int current;
+
+    public event Action&lt;int&gt; Damaged;
+
+    void Awake() =&gt; current = maxHealth;
+
+    public void TakeDamage(int amount)
+    {
+        current -= amount;
+        Damaged?.Invoke(current);
+    }
+}</code></pre>
+                        <pre><code class="language-csharp">using UnityEngine;
+
+public class HealthBarUI : MonoBehaviour
+{
+    [SerializeField] private Health health;
+
+    void OnEnable()  =&gt; health.Damaged += UpdateBar;
+    void OnDisable() =&gt; health.Damaged -= UpdateBar;
+
+    private void UpdateBar(int newHealth) =&gt; Debug.Log($"[UI] Health: {newHealth}");
+}
+
+public class HurtAudio : MonoBehaviour
+{
+    [SerializeField] private Health health;
+
+    void OnEnable()  =&gt; health.Damaged += PlayOuch;
+    void OnDisable() =&gt; health.Damaged -= PlayOuch;
+
+    private void PlayOuch(int newHealth) =&gt; Debug.Log("[Audio] Ouch!");
+}</code></pre>
+                        <p>One event, two reactors, zero coupling between them. Add a third listener (screen shake, analytics) by writing one more subscriber — <code>Health</code> never changes. That's the payoff.</p>
+                    </details>
+                </div>
+
+                <!-- Quiz Section -->
+                <div class="card quiz-container">
+                    <h3>🎯 Quick Quiz</h3>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 1:</strong> What is the main benefit of raising an event instead of directly calling each reactor?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="Events don't inherently run faster — the benefit is architectural.">
+                                A) Events always run faster than method calls.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! The publisher doesn't need to know its subscribers, so systems stay decoupled and you can add/remove reactors without editing the publisher.">
+                                B) The publisher doesn't need to know who reacts, so systems stay decoupled and easy to extend.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="Events don't remove the need for the reacting code — that still lives in subscribers.">
+                                C) You no longer have to write the reacting code at all.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 2:</strong> Where do you subscribe and unsubscribe a C# event on a MonoBehaviour, and why?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! OnEnable/OnDisable mirror each other (including before OnDestroy), so every += has a matching -=, preventing leaks and calls on dead objects.">
+                                A) <code>+=</code> in <code>OnEnable</code>, <code>-=</code> in <code>OnDisable</code> — they mirror each other, so nothing leaks.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="Subscribing in Awake with no matching unsubscribe leaks and can call dead objects.">
+                                B) <code>+=</code> in <code>Awake</code> only; unsubscribing isn't necessary.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="Update runs every frame — you'd subscribe thousands of times.">
+                                C) In <code>Update</code>, so it stays current every frame.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 3:</strong> You want a designer to hook up a reaction in the Inspector without writing code. Which mechanism fits best?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="Plain C# events are code-only and don't appear in the Inspector.">
+                                A) A C# <code>event</code> with <code>Action</code>.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! UnityEvent is serialized and shows in the Inspector, so designers can drag targets and pick methods — exactly like a Button's On Click.">
+                                B) A <code>UnityEvent</code>, which is serialized and shows in the Inspector.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="That works in code but still isn't visible or wireable in the Inspector.">
+                                C) A direct method call from the publisher.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section 8: Summary -->
+            <section id="summary" class="lesson-section">
+                <h2>Summary</h2>
+
+                <div class="card card-success">
+                    <h3>🎉 Key Takeaways</h3>
+                    <ul>
+                        <li><strong>Tight coupling</strong> — a class holding references to every collaborator — is fragile and doesn't scale. Events invert it: publishers <em>announce</em>, subscribers <em>react</em>.</li>
+                        <li>A C# <strong><code>event</code></strong> (often <code>Action</code>/<code>Action&lt;T&gt;</code>) lets one publisher broadcast to many subscribers that it knows nothing about. Raise with <code>Event?.Invoke(...)</code>.</li>
+                        <li><strong>Subscribe in <code>OnEnable</code>, unsubscribe in <code>OnDisable</code></strong> — every <code>+=</code> needs a matching <code>-=</code>, or you leak memory and risk calls on destroyed objects.</li>
+                        <li><strong><code>UnityEvent</code></strong> is a serialized event designers wire in the Inspector (like a Button's <em>On Click</em>).</li>
+                        <li>A <strong>ScriptableObject event channel</strong> decouples completely — publisher and subscribers reference only the channel asset, enabling cross-scene, cross-system communication.</li>
+                        <li>Pick the simplest mechanism that fits; decouple where change hurts, not everywhere.</li>
+                    </ul>
+                </div>
+
+                <h3>📚 Additional Resources</h3>
+                <ul>
+                    <li><a href="https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/events/" target="_blank" rel="noopener">Microsoft — C# Events (delegates &amp; the event keyword)</a></li>
+                    <li><a href="https://docs.unity3d.com/ScriptReference/Events.UnityEvent.html" target="_blank" rel="noopener">Scripting Reference — UnityEvent</a></li>
+                    <li><a href="https://unity.com/how-to/architect-game-code-scriptable-objects" target="_blank" rel="noopener">Unity — Architecting with ScriptableObjects (event channels)</a></li>
+                </ul>
+
+                <h3>🚀 What's Next?</h3>
+                <p>Systems can now talk without tangling. Next we deal with <em>time</em>: Lesson 3.3, <em>Coroutines and Async in Unity</em>, covers spreading work across frames with <code>IEnumerator</code>/<code>yield</code> and how that compares to C#'s <code>async</code>/<code>await</code> — perfect for delays, sequences, and waiting on events like the ones you just built.</p>
+
+                <!-- Encouragement Card -->
+                <div class="card card-accent" style="text-align: center; padding: 2rem;">
+                    <h3>🎉 Loosely coupled, cleanly built!</h3>
+                    <p>You've learned the pattern that keeps large games maintainable. Announce, don't command — your future self will thank you.</p>
+                </div>
+            </section>
+
+            <!-- Lesson Navigation -->
+            <nav class="lesson-nav" aria-label="Lesson Navigation">
+                <a href="lesson_07.html" class="prev-lesson">← Previous: Lesson 3.1 — ScriptableObjects for Data</a>
+                <a href="index.html" class="home-link">🏠 Course Home</a>
+                <a href="lesson_09.html" class="next-lesson">Next: Lesson 3.3 — Coroutines and Async in Unity →</a>
+            </nav>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+        <p>&copy; 2026 Ray de la Paz. All rights reserved.</p>
+        <div class="footer-links">
+            <a href="https://rays-home.netlify.app/">Ray's House of Fun</a>
+            <a href="https://rays-home.netlify.app/contact">Contact</a>
+            <a href="#" id="print-button">Print Page</a>
+        </div>
+        <p><small>Press <kbd>?</kbd> for keyboard shortcuts</small></p>
+    </footer>
+
+    <!-- JavaScript -->
+    <script src="js/clipboard.js"></script>
+    <script src="js/course-enhancements.js"></script>
+</body>
+</html>

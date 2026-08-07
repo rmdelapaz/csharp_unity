@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Write fast Unity C# — understand the GC, avoid per-frame allocations, cache references, pool objects with ObjectPool, and profile before optimizing.">
+    <meta name="author" content="Ray de la Paz">
+    <title>Lesson 5.1: Unity Performance and Memory - C# Scripting in Unity</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="icon" type="image/png" href="favicon.png">
+    <!-- Mermaid — initialized by course-enhancements.js for theme awareness -->
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        window.__mermaid = mermaid;
+        // Initial config — JS will re-init on theme change
+        const isDark = localStorage.getItem('theme') === 'dark' ||
+            (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: isDark ? 'dark' : 'default',
+            themeVariables: isDark
+                ? { primaryColor: '#334155', primaryTextColor: '#e2e8f0', primaryBorderColor: '#6366f1', lineColor: '#94a3b8', secondaryColor: '#1e293b', tertiaryColor: '#0f172a' }
+                : { primaryColor: '#eff6ff', primaryTextColor: '#1e293b', primaryBorderColor: '#3b82f6', lineColor: '#64748b', secondaryColor: '#f8fafc', tertiaryColor: '#f1f5f9' }
+        });
+    </script>
+</head>
+<body>
+    <!-- Skip to main content for accessibility -->
+    <a href="#main-content" class="skip-to-main">Skip to main content</a>
+
+
+    <!-- Navigation -->
+    <nav class="main-nav">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo">C# Scripting in Unity</a>
+            <button id="mobile-menu-toggle" class="mobile-menu-toggle" aria-expanded="false" aria-controls="nav-links">
+                ☰
+            </button>
+            <div class="nav-links" id="nav-links">
+                <a href="index.html">Home</a>
+                <a href="index.html#modules">All Modules</a>
+                <span class="nav-divider"></span>
+                <a href="https://rays-home.netlify.app/">Ray's House of Fun</a>
+                <a href="https://rays-home.netlify.app/contact">Contact</a>
+                <button id="theme-toggle" aria-label="Toggle dark/light mode">🌙</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Breadcrumb -->
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+        <ul>
+            <li><a href="index.html">Home</a></li>
+            <li><a href="index.html#modules">Module 5</a></li>
+            <li aria-current="page">Lesson 5.1: Unity Performance and Memory</li>
+        </ul>
+    </nav>
+
+    <!-- Main Content -->
+    <main id="main-content">
+        <div class="container">
+            <!-- Lesson Header -->
+            <header>
+                <h1>📝 Lesson 5.1: Unity Performance and Memory</h1>
+                <p class="lead">Throughout this course you've seen warnings: "don't do this every frame," "cache that," "we'll cover pooling in 5.1." This is 5.1. You'll learn <em>why</em> those matter — how the garbage collector causes frame hitches — and the core techniques for fast Unity C#: caching, avoiding allocations, pooling, and profiling before you optimize.</p>
+
+                <!-- Learning objectives -->
+                <div class="card card-info">
+                    <h2>🎯 Learning Objectives</h2>
+                    <p>By the end of this lesson, you will be able to:</p>
+                    <ul>
+                        <li>Explain how garbage collection causes frame spikes in Unity</li>
+                        <li>Identify and eliminate common <strong>allocations in <code>Update</code></strong></li>
+                        <li>Cache component references and reusable objects instead of recreating them</li>
+                        <li>Implement <strong>object pooling</strong> by hand and with Unity's <code>ObjectPool&lt;T&gt;</code></li>
+                        <li>Avoid hidden costs like <code>Camera.main</code> and string building in hot paths</li>
+                        <li>Use the <strong>Profiler</strong> to measure first and optimize what actually matters</li>
+                    </ul>
+                    <p><strong>Estimated Time:</strong> 75 minutes</p>
+                    <p><strong>Project:</strong> Refactor a spawn-heavy script to remove per-frame allocations and pool its objects, verified in the Profiler.</p>
+                </div>
+            </header>
+
+            <!-- Sticky Table of Contents -->
+            <details class="card toc-card" open>
+                <summary aria-label="Toggle table of contents">
+                    <span class="toc-icon" aria-hidden="true">📑</span>
+                    <span class="toc-label">In This Lesson</span>
+                    <span class="toc-chevron" aria-hidden="true">▾</span>
+                </summary>
+                <nav aria-label="Table of Contents">
+                    <ol>
+                        <li><a href="#introduction" class="toc-link">The GC and Frame Spikes</a></li>
+                        <li><a href="#allocations" class="toc-link">Allocations in Update</a></li>
+                        <li><a href="#caching" class="toc-link">Cache Everything Reusable</a></li>
+                        <li><a href="#pooling" class="toc-link">Object Pooling</a></li>
+                        <li><a href="#hidden" class="toc-link">Hidden Costs</a></li>
+                        <li><a href="#profiler" class="toc-link">Measure First: the Profiler</a></li>
+                        <li><a href="#exercise" class="toc-link">Exercise &amp; Quiz</a></li>
+                        <li><a href="#summary" class="toc-link">Summary</a></li>
+                    </ol>
+                </nav>
+            </details>
+
+            <!-- Section 1: GC -->
+            <section id="introduction" class="lesson-section">
+                <h2>The GC and Frame Spikes</h2>
+                <p>C# is a <em>managed</em> language: you allocate objects and the <strong>garbage collector (GC)</strong> frees them later. On a server that's fine. In a game rendering a frame every ~16ms, it's a trap — when the GC runs to reclaim memory, it can <em>pause your game</em> for several milliseconds, causing a visible stutter.</p>
+
+                <div class="card card-accent">
+                    <h4>📖 Definition</h4>
+                    <p><strong>Garbage</strong> is heap memory from objects you allocated (with <code>new</code>, or hidden allocations) that are no longer referenced. Periodically the <strong>GC</strong> stops execution to collect it. The more garbage you generate per frame, the more often — and longer — these collection pauses hit. In games this shows up as <strong>frame spikes</strong> or hitching.</p>
+                </div>
+
+                <div class="mermaid">
+                    graph LR
+                    A["Allocate every frame<br/>(new objects, strings…)"] --> B["Heap fills with garbage"]
+                    B --> C["GC runs to reclaim"]
+                    C --> D["Game pauses a few ms"]
+                    D --> E["Visible stutter / dropped frame"]
+                    style A fill:#fdecea,stroke:#c0392b,stroke-width:2px
+                    style E fill:#fdecea,stroke:#c0392b,stroke-width:2px
+                </div>
+
+                <div class="card card-success">
+                    <h4>✅ The core principle</h4>
+                    <p><strong>The fastest garbage is the garbage you never create.</strong> Most Unity performance work is about <em>not allocating</em> in code that runs every frame. Allocating once at startup is free of this cost; allocating 60 times a second is what hurts. Everything in this lesson flows from that idea.</p>
+                </div>
+            </section>
+
+            <!-- Section 2: Allocations in Update -->
+            <section id="allocations" class="lesson-section">
+                <h2>Allocations in Update</h2>
+                <p><code>Update</code>, <code>FixedUpdate</code>, and <code>LateUpdate</code> are the <em>hot paths</em> — they run constantly. An allocation that's harmless once becomes garbage-per-frame here. The usual culprits:</p>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>Allocation in a hot path</th><th>Fix</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td><code>GetComponent&lt;T&gt;()</code> each frame</td><td>Cache it in a field in <code>Awake</code>/<code>Start</code></td></tr>
+                            <tr><td><code>new WaitForSeconds(1f)</code> in a loop</td><td>Cache the wait object in a field (Lesson 3.3)</td></tr>
+                            <tr><td>String building: <code>"Score: " + n</code> every frame</td><td>Update only when the value changes (event-driven, Lesson 4.2)</td></tr>
+                            <tr><td>LINQ (<code>.Where</code>, <code>.Select</code>) in <code>Update</code></td><td>Use plain loops in hot paths; LINQ allocates iterators</td></tr>
+                            <tr><td><code>foreach</code> over some collection types</td><td>Fine for <code>List</code>/arrays; watch older enumerators that box</td></tr>
+                            <tr><td>Boxing a value type to <code>object</code></td><td>Use generics/typed APIs; avoid <code>object</code> params in hot paths</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <pre><code class="language-csharp">// ❌ Allocates every frame: a GetComponent lookup + a new string.
+void Update()
+{
+    GetComponent&lt;Renderer&gt;().material.color = Color.red;   // lookup each frame
+    label.text = "Time: " + Time.time;                     // new string each frame
+}</code></pre>
+
+                <pre><code class="language-csharp">// ✅ Cache the reference; only touch the string when it needs to change.
+private Renderer cachedRenderer;
+
+void Awake() =&gt; cachedRenderer = GetComponent&lt;Renderer&gt;();
+
+void Start() =&gt; cachedRenderer.material.color = Color.red;   // set once, not per frame</code></pre>
+
+                <blockquote>
+                    <strong>💡 The mindset shift:</strong> in a hot path, ask of every line "does this allocate, and does it need to run <em>this</em> frame?" Move one-time work to <code>Awake</code>/<code>Start</code>; move change-driven work behind events; keep only the truly per-frame math in <code>Update</code>.
+                </blockquote>
+            </section>
+
+            <!-- Section 3: Caching -->
+            <section id="caching" class="lesson-section">
+                <h2>Cache Everything Reusable</h2>
+                <p>Caching is the theme that has run through the whole course — now here's the complete rationale. Anything you look up or build repeatedly should be computed <em>once</em> and stored.</p>
+
+                <pre><code class="language-csharp">public class Enemy : MonoBehaviour
+{
+    // Cached component references (Lesson 1.3) — looked up once.
+    private Rigidbody body;
+    private Transform playerTarget;
+
+    // Cached reusable objects (Lesson 3.3) — allocated once, reused forever.
+    private readonly WaitForSeconds attackCooldown = new(1.5f);
+
+    void Awake()
+    {
+        body = GetComponent&lt;Rigidbody&gt;();
+        // Cache the player reference instead of finding it every frame.
+        playerTarget = GameObject.FindWithTag("Player").transform;
+    }
+
+    void FixedUpdate()
+    {
+        // Use the cached refs — no lookups, no allocations here.
+        Vector3 toPlayer = playerTarget.position - transform.position;
+        body.AddForce(toPlayer.normalized * 5f);
+    }
+}</code></pre>
+
+                <div class="card card-warning">
+                    <h4>⚠️ <code>Camera.main</code> is a hidden <code>Find</code></h4>
+                    <p><code>Camera.main</code> looks tidy but internally searches the scene for a camera tagged "MainCamera" — effectively a <code>FindWithTag</code> (Lesson 1.3). Calling it every frame is a real cost. Cache it once: <code>private Camera cam; void Awake() =&gt; cam = Camera.main;</code>. The same goes for any <code>Find</code>/<code>GetComponent</code> hiding inside a per-frame call.</p>
+                </div>
+
+                <div class="card card-success">
+                    <h4>✅ struct vs class for tiny data</h4>
+                    <p>Small, short-lived data (a 2D coordinate, an RGBA color) as a <code>struct</code> lives on the stack and generates <em>no</em> garbage, unlike a <code>class</code> which heap-allocates. Unity's own <code>Vector3</code>, <code>Color</code>, and <code>Quaternion</code> are structs for exactly this reason. For your own tiny value types in hot paths, prefer <code>struct</code> — but keep them small and immutable to avoid copy surprises.</p>
+                </div>
+            </section>
+
+            <!-- Section 4: Pooling -->
+            <section id="pooling" class="lesson-section">
+                <h2>Object Pooling</h2>
+                <p>Lesson 2.3 flagged this: constantly <code>Instantiate</code>-ing and <code>Destroy</code>-ing objects (bullets, enemies, effects) allocates and creates garbage. <strong>Object pooling</strong> fixes it — reuse a fixed set of objects instead of creating and destroying them.</p>
+
+                <div class="mermaid">
+                    graph LR
+                    GET["Get()"] --> ACT["Activate object<br/>from pool"]
+                    ACT --> USE["Object in use<br/>(flying, alive)"]
+                    USE --> REL["Release()"]
+                    REL --> DEACT["Deactivate &amp;<br/>return to pool"]
+                    DEACT --> GET
+                    style ACT fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                    style DEACT fill:#eff6ff,stroke:#3b82f6,stroke-width:2px
+                </div>
+
+                <p>Unity ships a ready-made pool: <code>ObjectPool&lt;T&gt;</code> in <code>UnityEngine.Pool</code>. You give it callbacks for create / get / release / destroy, and it manages the rest:</p>
+
+                <pre><code class="language-csharp">using UnityEngine;
+using UnityEngine.Pool;
+
+public class BulletSpawner : MonoBehaviour
+{
+    [SerializeField] private Bullet bulletPrefab;
+    private ObjectPool&lt;Bullet&gt; pool;
+
+    void Awake()
+    {
+        pool = new ObjectPool&lt;Bullet&gt;(
+            createFunc: () =&gt; Instantiate(bulletPrefab),        // make one when the pool is empty
+            actionOnGet: b =&gt; b.gameObject.SetActive(true),    // taken from pool
+            actionOnRelease: b =&gt; b.gameObject.SetActive(false), // returned to pool
+            actionOnDestroy: b =&gt; Destroy(b.gameObject),        // pool trimmed
+            defaultCapacity: 20);
+    }
+
+    public Bullet Fire(Vector3 position, Quaternion rotation)
+    {
+        Bullet bullet = pool.Get();          // reuse instead of Instantiate
+        bullet.transform.SetPositionAndRotation(position, rotation);
+        return bullet;
+    }
+
+    // The bullet calls this instead of Destroy(gameObject):
+    public void Return(Bullet bullet) =&gt; pool.Release(bullet);
+}</code></pre>
+
+                <div class="card card-info">
+                    <h4>💡 Pooled objects "return," they don't destroy</h4>
+                    <p>The key change: a pooled bullet that expires or hits something calls <code>pool.Release(this)</code> (which deactivates it) instead of <code>Destroy(gameObject)</code>. Nothing is allocated or garbage-collected — the same 20 bullets cycle forever. Reset each object's state in <code>actionOnGet</code> so a reused bullet doesn't carry stale velocity or health.</p>
+                </div>
+
+                <div class="card card-warning">
+                    <h4>⚠️ Pool only when it pays</h4>
+                    <p>Pooling adds complexity (state resets, returning objects, sizing). It's worth it for <em>high-frequency</em> spawns — bullet-hell, particles, projectiles. For a handful of objects created occasionally, plain <code>Instantiate</code>/<code>Destroy</code> is clearer and fine. Optimize the hot spots, not everything (see the Profiler section).</p>
+                </div>
+            </section>
+
+            <!-- Section 5: Hidden costs -->
+            <section id="hidden" class="lesson-section">
+                <h2>Hidden Costs</h2>
+                <p>Beyond allocations, a few Unity-specific calls are pricier than they look. In hot paths, watch for:</p>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>Looks cheap</th><th>Actually</th><th>Do instead</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td><code>Camera.main</code></td><td>A tagged <code>Find</code> each call</td><td>Cache in <code>Awake</code></td></tr>
+                            <tr><td><code>GameObject.Find(...)</code></td><td>Searches every object by name</td><td>Cache, or wire a reference (Lesson 1.3)</td></tr>
+                            <tr><td><code>gameObject.tag == "X"</code></td><td>Allocates a string</td><td><code>CompareTag("X")</code> (Lesson 2.2)</td></tr>
+                            <tr><td>Instantiate/Destroy in bulk</td><td>Allocation + GC</td><td>Object pooling</td></tr>
+                            <tr><td>Heavy work in <code>Update</code></td><td>Runs every frame for every instance</td><td>Do it on change/event, or less often</td></tr>
+                            <tr><td>Empty <code>Update()</code> methods</td><td>Still invoked each frame (Lesson 1.2)</td><td>Delete event functions you don't use</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="card card-success">
+                    <h4>✅ Run expensive things less often</h4>
+                    <p>Not everything needs to run every frame. AI decisions, distance checks against far objects, or UI refreshes can run a few times per second instead of 60. A coroutine (Lesson 3.3) with <code>yield return new WaitForSeconds(0.2f)</code>, or an accumulating timer in <code>Update</code>, spreads the cost. And when comparing distances, use <code>sqrMagnitude</code> instead of <code>Vector3.Distance</code> to skip a square root (Lesson 2.1).</p>
+                </div>
+            </section>
+
+            <!-- Section 6: Profiler -->
+            <section id="profiler" class="lesson-section">
+                <h2>Measure First: the Profiler</h2>
+                <p>The most important rule comes last, because it governs all the rest: <strong>profile before you optimize.</strong> Guessing at bottlenecks wastes time and adds complexity where it isn't needed. Unity's <strong>Profiler</strong> (<em>Window → Analysis → Profiler</em>) shows exactly where each frame's time and memory go.</p>
+
+                <div class="mermaid">
+                    graph LR
+                    M["Measure<br/>(Profiler)"] --> F["Find the real<br/>bottleneck"]
+                    F --> O["Optimize just that"]
+                    O --> V["Verify it improved<br/>(measure again)"]
+                    V --> M
+                    style M fill:#eff6ff,stroke:#3b82f6,stroke-width:2px
+                    style O fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                </div>
+
+                <p>What to look at:</p>
+                <ul>
+                    <li><strong>CPU Usage</strong> — which methods eat the frame; look for spikes.</li>
+                    <li><strong>GC Alloc column</strong> — bytes allocated per frame. Your target is <strong>0 B</strong> in steady-state gameplay. Any per-frame number here is garbage you can hunt down.</li>
+                    <li><strong>The spikes</strong> — regular tall bars often mean a GC collection; trace them to the allocations feeding it.</li>
+                </ul>
+
+                <div class="card card-info">
+                    <h4>💡 Profiler workflow</h4>
+                    <p>Enter Play mode, open the Profiler, and watch the <em>GC Alloc</em> column while gameplay runs. Sort by it, find the method allocating each frame, and apply this lesson's fixes (cache, pool, event-drive). Then re-measure to confirm. Also use <code>Debug.Log</code> timing or the <code>ProfilerMarker</code> API to bracket suspicious code. Profile in a <strong>build</strong> when possible — the Editor adds overhead that skews numbers.</p>
+                </div>
+
+                <div class="card card-warning">
+                    <h4>⚠️ Don't optimize blind</h4>
+                    <p>"Premature optimization" — rewriting code you <em>assume</em> is slow — usually just makes it harder to read for no gain. Write clear code first; when the Profiler shows a real hot spot, optimize <em>that</em>. Readability matters more than micro-optimizing code that runs twice.</p>
+                </div>
+            </section>
+
+            <!-- Section 7: Exercise & Quiz -->
+            <section id="exercise" class="lesson-section">
+                <h2>Exercise &amp; Quiz</h2>
+
+                <div class="card card-info">
+                    <h3>🏋️ Exercise: Kill the Per-Frame Garbage</h3>
+                    <p><strong>Objective:</strong> Take an allocation-heavy script to 0 B/frame, then pool its spawns — and confirm both in the Profiler.</p>
+
+                    <h4>Instructions:</h4>
+                    <ol>
+                        <li>Start from the "bad" script below. Open the Profiler, enter Play mode, and note the <em>GC Alloc</em> per frame.</li>
+                        <li>Cache the <code>Camera.main</code> and <code>GetComponent</code> lookups in <code>Awake</code>.</li>
+                        <li>Replace <code>tag ==</code> with <code>CompareTag</code>, and stop rebuilding the label string every frame (only update it when the value changes).</li>
+                        <li>Convert the bullet spawning to an <code>ObjectPool&lt;Bullet&gt;</code>; make bullets <code>Release</code> back to the pool instead of <code>Destroy</code>.</li>
+                        <li>Re-check the Profiler: steady-state <em>GC Alloc</em> should drop toward <strong>0 B</strong>. Note the before/after.</li>
+                    </ol>
+
+                    <h4>Starter Code (the "before"):</h4>
+                    <pre><code class="language-csharp">using UnityEngine;
+using TMPro;
+
+public class BadPerf : MonoBehaviour
+{
+    [SerializeField] private TMP_Text label;
+    [SerializeField] private Bullet bulletPrefab;
+
+    void Update()
+    {
+        // 1) Camera.main every frame (hidden Find)
+        Vector3 screen = Camera.main.WorldToScreenPoint(transform.position);
+
+        // 2) GetComponent every frame
+        GetComponent&lt;Renderer&gt;().enabled = true;
+
+        // 3) string allocation every frame
+        label.text = "Pos: " + transform.position;
+
+        // 4) tag compare allocates
+        if (gameObject.tag == "Player") { /* ... */ }
+
+        // 5) Instantiate + Destroy churn
+        if (Input.GetKeyDown(KeyCode.Space))
+        {
+            Bullet b = Instantiate(bulletPrefab);
+            Destroy(b.gameObject, 2f);
+        }
+    }
+}</code></pre>
+
+                    <details>
+                        <summary>💡 Hint</summary>
+                        <p>Cache <code>Camera cam;</code> and <code>Renderer rend;</code> in <code>Awake</code>. Use <code>CompareTag("Player")</code>. Only set <code>label.text</code> when the position actually changes (store the last value). For pooling, build an <code>ObjectPool&lt;Bullet&gt;</code> (Section 4) and have the bullet call <code>spawner.Return(this)</code> after its lifetime instead of <code>Destroy</code>.</p>
+                    </details>
+
+                    <details>
+                        <summary>✅ Solution (the "after")</summary>
+                        <pre><code class="language-csharp">using UnityEngine;
+using UnityEngine.Pool;
+using TMPro;
+
+public class GoodPerf : MonoBehaviour
+{
+    [SerializeField] private TMP_Text label;
+    [SerializeField] private Bullet bulletPrefab;
+
+    private Camera cam;
+    private Renderer rend;
+    private Vector3 lastPos;
+    private ObjectPool&lt;Bullet&gt; pool;
+
+    void Awake()
+    {
+        cam = Camera.main;                      // cached once
+        rend = GetComponent&lt;Renderer&gt;();         // cached once
+        rend.enabled = true;                    // set once, not per frame
+
+        pool = new ObjectPool&lt;Bullet&gt;(
+            () =&gt; Instantiate(bulletPrefab),
+            b =&gt; b.gameObject.SetActive(true),
+            b =&gt; b.gameObject.SetActive(false),
+            b =&gt; Destroy(b.gameObject),
+            defaultCapacity: 20);
+    }
+
+    void Update()
+    {
+        // Only rebuild the string when the position actually changed.
+        if (transform.position != lastPos)
+        {
+            label.text = $"Pos: {transform.position}";
+            lastPos = transform.position;
+        }
+
+        if (CompareTag("Player")) { /* ... */ }   // no string alloc
+
+        if (Input.GetKeyDown(KeyCode.Space))
+        {
+            Bullet b = pool.Get();                // reused, no GC
+            b.transform.position = transform.position;
+        }
+    }
+
+    public void ReturnBullet(Bullet b) =&gt; pool.Release(b);
+}</code></pre>
+                        <p>Every per-frame allocation is gone: references cached, the string built only on change, <code>CompareTag</code> instead of <code>tag ==</code>, and bullets pooled instead of churned. The Profiler's <em>GC Alloc</em> should now read ~0 B during steady play.</p>
+                    </details>
+                </div>
+
+                <!-- Quiz Section -->
+                <div class="card quiz-container">
+                    <h3>🎯 Quick Quiz</h3>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 1:</strong> Why do per-frame allocations hurt performance in Unity specifically?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="Allocating memory itself is fast — the cost comes later.">
+                                A) Allocating memory is extremely slow on its own.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! The garbage they create triggers GC collections that pause the game for milliseconds, causing frame spikes.">
+                                B) The garbage they generate triggers GC collections that pause the game, causing frame spikes.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="Unity doesn't cap allocations per frame — the issue is GC pressure.">
+                                C) Unity limits how many objects you can allocate per frame.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 2:</strong> When is object pooling the right choice over <code>Instantiate</code>/<code>Destroy</code>?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="For a rare, one-off object, pooling just adds complexity for no gain.">
+                                A) Always — pooling is strictly better everywhere.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! Pooling pays off for high-frequency spawn/destroy (bullets, particles) where the churn creates GC pressure.">
+                                B) For high-frequency spawning/destroying (bullets, particles) where the churn creates GC pressure.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="Pooling doesn't help static objects that are never created or destroyed at runtime.">
+                                C) For objects that never spawn or despawn during play.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 3:</strong> What should you do <em>before</em> optimizing a script you think is slow?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="Rewriting on a hunch often adds complexity without fixing the real bottleneck.">
+                                A) Rewrite it immediately based on your best guess.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! Profile first (Profiler / GC Alloc) to find the real bottleneck, optimize that, then re-measure to confirm.">
+                                B) Profile it to find the real bottleneck, then optimize that and re-measure.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="Adding pooling everywhere blindly is premature optimization.">
+                                C) Add object pooling to every script in the project.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section 8: Summary -->
+            <section id="summary" class="lesson-section">
+                <h2>Summary</h2>
+
+                <div class="card card-success">
+                    <h3>🎉 Key Takeaways</h3>
+                    <ul>
+                        <li>The <strong>GC</strong> reclaims unreferenced heap memory by pausing the game — per-frame garbage means frequent <strong>frame spikes</strong>. The fastest garbage is what you never create.</li>
+                        <li>Eliminate <strong>allocations in <code>Update</code></strong>: cache <code>GetComponent</code>/<code>WaitForSeconds</code>, avoid per-frame strings/LINQ/boxing, update on change (events) not every frame.</li>
+                        <li><strong>Cache</strong> anything reused — references, reusable objects, and especially <code>Camera.main</code> (a hidden <code>Find</code>). Prefer small <code>struct</code>s for tiny hot-path data.</li>
+                        <li><strong>Object pooling</strong> (hand-rolled or <code>UnityEngine.Pool.ObjectPool&lt;T&gt;</code>) reuses objects instead of churning them — for high-frequency spawns; reset state on get, <code>Release</code> instead of <code>Destroy</code>.</li>
+                        <li>Watch hidden costs: <code>Find</code>, <code>tag ==</code> (use <code>CompareTag</code>), empty <code>Update</code>s; run expensive work less often.</li>
+                        <li><strong>Profile first.</strong> Use the Profiler's <em>GC Alloc</em> and CPU views to find real bottlenecks, optimize those, and re-measure. Don't optimize blind.</li>
+                    </ul>
+                </div>
+
+                <h3>📚 Additional Resources</h3>
+                <ul>
+                    <li><a href="https://docs.unity3d.com/Manual/performance-garbage-collector.html" target="_blank" rel="noopener">Manual — Understanding the garbage collector</a></li>
+                    <li><a href="https://docs.unity3d.com/ScriptReference/Pool.ObjectPool_1.html" target="_blank" rel="noopener">Scripting Reference — ObjectPool&lt;T&gt;</a></li>
+                    <li><a href="https://docs.unity3d.com/Manual/Profiler.html" target="_blank" rel="noopener">Manual — The Profiler window</a></li>
+                    <li><a href="https://unity.com/how-to/optimize-your-game-code" target="_blank" rel="noopener">Unity — Optimize your game code (best practices)</a></li>
+                </ul>
+
+                <h3>🚀 What's Next?</h3>
+                <p>Fast code still has to be <em>correct</em>. Lesson 5.2, <em>Debugging and the Unity Test Framework</em>, covers finding and fixing bugs — <code>Debug</code> tools, breakpoints, Gizmos — and writing automated tests with the Unity Test Framework so your systems stay reliable as the project grows.</p>
+
+                <!-- Encouragement Card -->
+                <div class="card card-accent" style="text-align: center; padding: 2rem;">
+                    <h3>🎉 Smooth and efficient!</h3>
+                    <p>You now know why those "don't do this every frame" warnings mattered — and how to keep your game running at a steady frame rate. That's the mark of a polished Unity developer.</p>
+                </div>
+            </section>
+
+            <!-- Lesson Navigation -->
+            <nav class="lesson-nav" aria-label="Lesson Navigation">
+                <a href="lesson_12.html" class="prev-lesson">← Previous: Lesson 4.3 — Saving and Loading</a>
+                <a href="index.html" class="home-link">🏠 Course Home</a>
+                <a href="lesson_14.html" class="next-lesson">Next: Lesson 5.2 — Debugging and the Unity Test Framework →</a>
+            </nav>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+        <p>&copy; 2026 Ray de la Paz. All rights reserved.</p>
+        <div class="footer-links">
+            <a href="https://rays-home.netlify.app/">Ray's House of Fun</a>
+            <a href="https://rays-home.netlify.app/contact">Contact</a>
+            <a href="#" id="print-button">Print Page</a>
+        </div>
+        <p><small>Press <kbd>?</kbd> for keyboard shortcuts</small></p>
+    </footer>
+
+    <!-- JavaScript -->
+    <script src="js/clipboard.js"></script>
+    <script src="js/course-enhancements.js"></script>
+</body>
+</html>

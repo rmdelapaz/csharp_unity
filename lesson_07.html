@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Store shared game data as assets with ScriptableObjects — CreateAssetMenu, data-driven design, referencing data from MonoBehaviours, and the shared-instance gotcha.">
+    <meta name="author" content="Ray de la Paz">
+    <title>Lesson 3.1: ScriptableObjects for Data - C# Scripting in Unity</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="icon" type="image/png" href="favicon.png">
+    <!-- Mermaid — initialized by course-enhancements.js for theme awareness -->
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        window.__mermaid = mermaid;
+        // Initial config — JS will re-init on theme change
+        const isDark = localStorage.getItem('theme') === 'dark' ||
+            (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: isDark ? 'dark' : 'default',
+            themeVariables: isDark
+                ? { primaryColor: '#334155', primaryTextColor: '#e2e8f0', primaryBorderColor: '#6366f1', lineColor: '#94a3b8', secondaryColor: '#1e293b', tertiaryColor: '#0f172a' }
+                : { primaryColor: '#eff6ff', primaryTextColor: '#1e293b', primaryBorderColor: '#3b82f6', lineColor: '#64748b', secondaryColor: '#f8fafc', tertiaryColor: '#f1f5f9' }
+        });
+    </script>
+</head>
+<body>
+    <!-- Skip to main content for accessibility -->
+    <a href="#main-content" class="skip-to-main">Skip to main content</a>
+
+
+    <!-- Navigation -->
+    <nav class="main-nav">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo">C# Scripting in Unity</a>
+            <button id="mobile-menu-toggle" class="mobile-menu-toggle" aria-expanded="false" aria-controls="nav-links">
+                ☰
+            </button>
+            <div class="nav-links" id="nav-links">
+                <a href="index.html">Home</a>
+                <a href="index.html#modules">All Modules</a>
+                <span class="nav-divider"></span>
+                <a href="https://rays-home.netlify.app/">Ray's House of Fun</a>
+                <a href="https://rays-home.netlify.app/contact">Contact</a>
+                <button id="theme-toggle" aria-label="Toggle dark/light mode">🌙</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Breadcrumb -->
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+        <ul>
+            <li><a href="index.html">Home</a></li>
+            <li><a href="index.html#modules">Module 3</a></li>
+            <li aria-current="page">Lesson 3.1: ScriptableObjects for Data</li>
+        </ul>
+    </nav>
+
+    <!-- Main Content -->
+    <main id="main-content">
+        <div class="container">
+            <!-- Lesson Header -->
+            <header>
+                <h1>📝 Lesson 3.1: ScriptableObjects for Data</h1>
+                <p class="lead">Not everything needs to be a <code>MonoBehaviour</code> living on a GameObject. Game <em>data</em> — weapon stats, enemy configs, level settings — is often better stored as standalone <strong>assets</strong>. That's what a <code>ScriptableObject</code> is: a C# object saved as a project asset, editable in the Inspector, shared by reference.</p>
+
+                <!-- Learning objectives -->
+                <div class="card card-info">
+                    <h2>🎯 Learning Objectives</h2>
+                    <p>By the end of this lesson, you will be able to:</p>
+                    <ul>
+                        <li>Explain what a <code>ScriptableObject</code> is and how it differs from a <code>MonoBehaviour</code></li>
+                        <li>Author a ScriptableObject class and make instances with <code>[CreateAssetMenu]</code></li>
+                        <li>Reference a data asset from a MonoBehaviour and read its values</li>
+                        <li>Apply <strong>data-driven design</strong> to separate data from behavior</li>
+                        <li>Avoid the "shared instance" trap when modifying a ScriptableObject at runtime</li>
+                        <li>Decide when data belongs in a ScriptableObject vs a MonoBehaviour or plain class</li>
+                    </ul>
+                    <p><strong>Estimated Time:</strong> 60 minutes</p>
+                    <p><strong>Project:</strong> Turn hardcoded enemy stats into reusable <code>EnemyData</code> assets that many enemies share.</p>
+                </div>
+            </header>
+
+            <!-- Sticky Table of Contents -->
+            <details class="card toc-card" open>
+                <summary aria-label="Toggle table of contents">
+                    <span class="toc-icon" aria-hidden="true">📑</span>
+                    <span class="toc-label">In This Lesson</span>
+                    <span class="toc-chevron" aria-hidden="true">▾</span>
+                </summary>
+                <nav aria-label="Table of Contents">
+                    <ol>
+                        <li><a href="#introduction" class="toc-link">The Problem: Duplicated Data</a></li>
+                        <li><a href="#what" class="toc-link">What Is a ScriptableObject?</a></li>
+                        <li><a href="#creating" class="toc-link">Authoring a Data Asset</a></li>
+                        <li><a href="#using" class="toc-link">Referencing Data from a MonoBehaviour</a></li>
+                        <li><a href="#shared" class="toc-link">The Shared-Instance Gotcha</a></li>
+                        <li><a href="#when" class="toc-link">When to Use Which</a></li>
+                        <li><a href="#exercise" class="toc-link">Exercise &amp; Quiz</a></li>
+                        <li><a href="#summary" class="toc-link">Summary</a></li>
+                    </ol>
+                </nav>
+            </details>
+
+            <!-- Section 1: Problem -->
+            <section id="introduction" class="lesson-section">
+                <h2>The Problem: Duplicated Data</h2>
+                <p>Imagine 50 Goblins in your game, each a prefab instance with a <code>MonoBehaviour</code> holding <code>maxHealth = 30</code>, <code>speed = 4</code>, <code>damage = 5</code>. Now the designer wants goblins tougher: health 40. You either edit the prefab (fine) — but what if those values are tuned <em>per-scene</em>, or spread across several enemy scripts? The data gets duplicated and drifts out of sync.</p>
+
+                <p>The deeper issue: <strong>data is riding on behavior.</strong> The numbers that define "what a goblin is" are trapped inside a component that also has to live on a GameObject, run a lifecycle, and exist in a scene. What we want is to store the <em>data</em> once, separately, and let every goblin point at it.</p>
+
+                <blockquote>
+                    <strong>💡 The goal:</strong> one source of truth for each kind of data, editable by designers, referenced by many objects. Change it in one place, and everything using it updates. That's exactly what a <code>ScriptableObject</code> gives you.
+                </blockquote>
+            </section>
+
+            <!-- Section 2: What -->
+            <section id="what" class="lesson-section">
+                <h2>What Is a ScriptableObject?</h2>
+                <p>A <strong>ScriptableObject</strong> is a class that inherits <code>ScriptableObject</code> instead of <code>MonoBehaviour</code>. Like a MonoBehaviour it has serialized fields you edit in the Inspector — but unlike a MonoBehaviour, an instance is <em>saved as a project asset</em>, not attached to a GameObject.</p>
+
+                <div class="card card-accent">
+                    <h4>📖 Definition</h4>
+                    <p>A <strong>ScriptableObject</strong> is a data container that lives as an asset in your project (a <code>.asset</code> file), independent of any scene or GameObject. It holds data and helper methods, is edited in the Inspector, and is referenced by other objects just like a prefab.</p>
+                </div>
+
+                <p>Both derive from Unity's <code>Object</code>, but they answer different questions:</p>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th></th><th>MonoBehaviour</th><th>ScriptableObject</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Lives on</td><td>A GameObject in a scene</td><td>An asset in the project</td></tr>
+                            <tr><td>Answers</td><td>"What does this object <em>do</em>?"</td><td>"What <em>data</em> does this represent?"</td></tr>
+                            <tr><td>Lifecycle</td><td><code>Awake</code>/<code>Update</code>/etc. every frame</td><td>No per-frame loop; no <code>Update</code></td></tr>
+                            <tr><td>Instances</td><td>One per GameObject that has it</td><td>One asset, shared by everything that references it</td></tr>
+                            <tr><td>Created with</td><td><code>AddComponent</code> / attach in Editor</td><td><code>[CreateAssetMenu]</code> / <code>CreateInstance</code></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="mermaid">
+                    graph TD
+                    SO["GoblinData (asset)<br/>health 30, speed 4, damage 5"]
+                    G1["Goblin #1<br/>Enemy component"] -->|"references"| SO
+                    G2["Goblin #2<br/>Enemy component"] -->|"references"| SO
+                    G3["Goblin #3<br/>Enemy component"] -->|"references"| SO
+                    style SO fill:#eff6ff,stroke:#3b82f6,stroke-width:2px
+                    style G1 fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                    style G2 fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                    style G3 fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                </div>
+
+                <p>All three goblins point at the <em>same</em> <code>GoblinData</code> asset. Edit that one asset and every goblin sees the change — the single source of truth we wanted. There's also a memory win: 50 goblins share one copy of the data instead of each carrying its own.</p>
+            </section>
+
+            <!-- Section 3: Creating -->
+            <section id="creating" class="lesson-section">
+                <h2>Authoring a Data Asset</h2>
+                <p>Two steps: write a class that inherits <code>ScriptableObject</code>, and tag it with <code>[CreateAssetMenu]</code> so you can create instances from Unity's <em>Assets → Create</em> menu.</p>
+
+                <pre><code class="language-csharp">using UnityEngine;
+
+[CreateAssetMenu(fileName = "NewEnemyData", menuName = "Game/Enemy Data")]
+public class EnemyData : ScriptableObject
+{
+    [Header("Stats")]
+    public int maxHealth = 30;
+    public float moveSpeed = 4f;
+    public int damage = 5;
+
+    [Header("Presentation")]
+    public string displayName = "Goblin";
+    public Sprite icon;
+
+    // ScriptableObjects can have methods too — data + behavior on the data itself.
+    public int DamageAfterArmor(int armor) =&gt; Mathf.Max(0, damage - armor);
+}</code></pre>
+
+                <div class="card card-info">
+                    <h4>💡 The <code>[CreateAssetMenu]</code> attribute</h4>
+                    <p><code>menuName</code> is where it appears under <em>Assets → Create</em> (here: <em>Create → Game → Enemy Data</em>). <code>fileName</code> is the default name of the new asset. Right-click in the Project window, create a couple — "GoblinData", "OrcData" — and fill in different stats in the Inspector. Each is a separate asset of the same type.</p>
+                </div>
+
+                <div class="card card-warning">
+                    <h4>⚠️ No constructor, no <code>new</code></h4>
+                    <p>Just like MonoBehaviours (Lesson 1.1), you don't <code>new</code> a ScriptableObject or give it a constructor — Unity creates the asset. In the rare case you need one at runtime, use <code>ScriptableObject.CreateInstance&lt;EnemyData&gt;()</code>, not <code>new EnemyData()</code>. Initialization that must run when the asset loads goes in <code>OnEnable</code>.</p>
+                </div>
+            </section>
+
+            <!-- Section 4: Using -->
+            <section id="using" class="lesson-section">
+                <h2>Referencing Data from a MonoBehaviour</h2>
+                <p>An <code>EnemyData</code> asset is just data — something has to <em>act</em> on it. That's a MonoBehaviour with a reference to the asset, wired in the Inspector (Lesson 1.3). The behavior lives in the component; the numbers live in the asset.</p>
+
+                <pre><code class="language-csharp">using UnityEngine;
+
+public class Enemy : MonoBehaviour
+{
+    [SerializeField] private EnemyData data;   // drag a GoblinData asset here
+    private int currentHealth;
+
+    void Start()
+    {
+        // Read starting values FROM the shared data asset into per-instance state.
+        currentHealth = data.maxHealth;
+        gameObject.name = data.displayName;
+    }
+
+    public void TakeDamage(int amount)
+    {
+        currentHealth -= amount;
+        if (currentHealth &lt;= 0)
+            Destroy(gameObject);
+    }
+
+    void Update()
+    {
+        // Behavior uses the shared data, but state (currentHealth) stays local.
+        transform.Translate(Vector3.forward * data.moveSpeed * Time.deltaTime);
+    }
+}</code></pre>
+
+                <div class="card card-success">
+                    <h4>✅ The pattern: shared data in, per-instance state local</h4>
+                    <p>Notice the split. <code>data.maxHealth</code> is <em>shared config</em> read from the asset. <code>currentHealth</code> is <em>this enemy's</em> live state — a normal field on the component, unique per instance. Read config from the ScriptableObject; keep changing state on the MonoBehaviour. This is the crux of using data assets correctly.</p>
+                </div>
+
+                <p>Now swapping an enemy from Goblin to Orc is a single drag in the Inspector — no code change. Designers can create and balance dozens of enemy types without touching the <code>Enemy</code> script at all. That's <strong>data-driven design</strong>: behavior is fixed in code, variety comes from data.</p>
+            </section>
+
+            <!-- Section 5: Shared gotcha -->
+            <section id="shared" class="lesson-section">
+                <h2>The Shared-Instance Gotcha</h2>
+                <p>Here's the trap that catches everyone once. Because all enemies share the <em>same</em> asset, writing to that asset's fields at runtime changes it <strong>for everybody</strong> — and, in the Editor, the change can <em>persist after you stop playing</em>.</p>
+
+                <pre><code class="language-csharp">// ❌ DON'T do this — it mutates the shared asset, affecting all enemies
+// and permanently editing your data asset in the Editor.
+public void TakeDamage(int amount)
+{
+    data.maxHealth -= amount;   // WRONG: writing to the shared ScriptableObject
+}</code></pre>
+
+                <div class="mermaid">
+                    graph TD
+                    T["enemy.TakeDamage()<br/>writes data.maxHealth"] --> SO["Shared GoblinData asset"]
+                    SO -->|"now changed for"| G1["Goblin #1 😱"]
+                    SO -->|"and"| G2["Goblin #2 😱"]
+                    SO -->|"and persists in Editor"| PERSIST["Asset edited on disk 😱"]
+                    style T fill:#fdecea,stroke:#c0392b,stroke-width:2px
+                    style PERSIST fill:#fdecea,stroke:#c0392b,stroke-width:2px
+                </div>
+
+                <div class="card card-warning">
+                    <h4>⚠️ Treat ScriptableObject data as read-only at runtime</h4>
+                    <p>Read <em>from</em> the asset into a local field, then modify the <em>local</em> field — never the asset. In the correct <code>Enemy</code> above, <code>currentHealth = data.maxHealth</code> copies the value out, and damage reduces <code>currentHealth</code>, leaving the asset untouched. If you truly need a mutable per-instance copy of a whole asset, clone it with <code>Instantiate(data)</code>.</p>
+                </div>
+
+                <blockquote>
+                    <strong>💡 Why it persists:</strong> In a build, ScriptableObject edits are discarded when the game closes. But in the <em>Editor</em>, the asset is a real file — runtime writes to it are saved like any Inspector edit, silently corrupting your tuned values. This surprises people because it doesn't happen with MonoBehaviour fields, which reset each Play session.</p>
+                </blockquote>
+            </section>
+
+            <!-- Section 6: When -->
+            <section id="when" class="lesson-section">
+                <h2>When to Use Which</h2>
+                <p>ScriptableObjects are powerful but not the answer to everything. Three homes for your data, each with a job:</p>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>Use…</th><th>When the data…</th><th>Example</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td><strong>ScriptableObject</strong></td><td>is <em>shared config</em> designers tune, reused across many objects/scenes</td><td>Weapon stats, enemy types, level settings, audio libraries</td></tr>
+                            <tr><td><strong>MonoBehaviour field</strong></td><td>is <em>live per-instance state</em> that changes during play</td><td>Current health, ammo left, this enemy's target</td></tr>
+                            <tr><td><strong>Plain C# class/struct</strong></td><td>is short-lived runtime data with no need to appear in the Inspector or be an asset</td><td>A pathfinding node, a temporary result, a DTO</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="card card-info">
+                    <h4>💡 Beyond data: SOs as more</h4>
+                    <p>ScriptableObjects also shine as <em>shared services</em> — event channels that decouple systems (a preview of Lesson 3.2), runtime variables both UI and gameplay read, or strategy objects (different AI behaviors as swappable assets). The common thread is "an asset that many things reference." For this lesson, focus on the data-container use; the pattern generalizes from there.</p>
+                </div>
+
+                <div class="card card-success">
+                    <h4>✅ Rule of thumb</h4>
+                    <p><strong>Config that's the same for many and edited by designers → ScriptableObject. State that's unique per object and changes at runtime → MonoBehaviour field.</strong> When in doubt, ask: "Is this describing a <em>kind of thing</em> (SO) or the <em>current condition of one thing</em> (MonoBehaviour)?"</p>
+                </div>
+            </section>
+
+            <!-- Section 7: Exercise & Quiz -->
+            <section id="exercise" class="lesson-section">
+                <h2>Exercise &amp; Quiz</h2>
+
+                <div class="card card-info">
+                    <h3>🏋️ Exercise: Data-Drive Your Enemies</h3>
+                    <p><strong>Objective:</strong> Replace hardcoded enemy stats with shared <code>EnemyData</code> assets, and prove the shared-instance rule to yourself.</p>
+
+                    <h4>Instructions:</h4>
+                    <ol>
+                        <li>Write the <code>EnemyData</code> ScriptableObject (Section 3) with health, speed, damage, and a display name.</li>
+                        <li>Create two assets via <em>Assets → Create → Game → Enemy Data</em>: a weak "Goblin" and a tough "Orc" with different numbers.</li>
+                        <li>Write the <code>Enemy</code> MonoBehaviour that reads <code>data.maxHealth</code> into a local <code>currentHealth</code> in <code>Start</code>, and moves at <code>data.moveSpeed</code>.</li>
+                        <li>Put two enemy GameObjects in the scene; assign the Goblin asset to one and the Orc asset to the other. Confirm they behave differently with <em>no</em> code change.</li>
+                        <li><strong>Prove the gotcha:</strong> temporarily write <code>data.maxHealth -= amount</code> in <code>TakeDamage</code>, play, damage an enemy, stop — then look at the asset's health in the Inspector. Fix it back to modify <code>currentHealth</code> instead.</li>
+                    </ol>
+
+                    <h4>Starter Code:</h4>
+                    <pre><code class="language-csharp">using UnityEngine;
+
+public class Enemy : MonoBehaviour
+{
+    [SerializeField] private EnemyData data;
+    private int currentHealth;
+
+    void Start()
+    {
+        // TODO: copy data.maxHealth into currentHealth; set the object's name.
+    }
+
+    public void TakeDamage(int amount)
+    {
+        // TODO: reduce currentHealth (NOT data!), destroy at 0.
+    }
+}</code></pre>
+
+                    <details>
+                        <summary>💡 Hint</summary>
+                        <p>In <code>Start</code>: <code>currentHealth = data.maxHealth;</code>. In <code>TakeDamage</code>: subtract from <code>currentHealth</code>, and <code>if (currentHealth &lt;= 0) Destroy(gameObject);</code>. The rule: read from <code>data</code>, write to <code>currentHealth</code>. Never assign to a <code>data.*</code> field at runtime.</p>
+                    </details>
+
+                    <details>
+                        <summary>✅ Solution</summary>
+                        <pre><code class="language-csharp">using UnityEngine;
+
+[CreateAssetMenu(fileName = "NewEnemyData", menuName = "Game/Enemy Data")]
+public class EnemyData : ScriptableObject
+{
+    public int maxHealth = 30;
+    public float moveSpeed = 4f;
+    public int damage = 5;
+    public string displayName = "Goblin";
+}</code></pre>
+                        <pre><code class="language-csharp">using UnityEngine;
+
+public class Enemy : MonoBehaviour
+{
+    [SerializeField] private EnemyData data;
+    private int currentHealth;
+
+    void Start()
+    {
+        currentHealth = data.maxHealth;      // copy shared config into local state
+        gameObject.name = data.displayName;
+    }
+
+    public void TakeDamage(int amount)
+    {
+        currentHealth -= amount;             // modify LOCAL state, not the asset
+        if (currentHealth &lt;= 0)
+            Destroy(gameObject);
+    }
+
+    void Update()
+    {
+        transform.Translate(Vector3.forward * data.moveSpeed * Time.deltaTime);
+    }
+}</code></pre>
+                        <p>Two enemy types, one script, zero duplicated numbers — and because damage touches only <code>currentHealth</code>, your <code>EnemyData</code> assets stay pristine across Play sessions.</p>
+                    </details>
+                </div>
+
+                <!-- Quiz Section -->
+                <div class="card quiz-container">
+                    <h3>🎯 Quick Quiz</h3>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 1:</strong> What is the key difference between a ScriptableObject and a MonoBehaviour?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="Both can have serialized fields shown in the Inspector.">
+                                A) Only MonoBehaviours can have Inspector-editable fields.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! A ScriptableObject lives as a project asset (data), while a MonoBehaviour lives on a GameObject in a scene (behavior) and runs the frame loop.">
+                                B) A ScriptableObject is stored as a project asset for data; a MonoBehaviour lives on a GameObject and runs the per-frame lifecycle.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="ScriptableObjects don't get Update — they have no per-frame loop.">
+                                C) ScriptableObjects run <code>Update</code> faster than MonoBehaviours.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 2:</strong> Five enemies reference the same <code>EnemyData</code> asset. One enemy does <code>data.maxHealth -= 10</code> at runtime. What happens?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="The data is shared, so a write is not isolated to one enemy.">
+                                A) Only that one enemy's health changes.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! They share one asset, so the change affects all five — and in the Editor it persists on the asset after Play. Modify a local field instead.">
+                                B) All five are affected, and in the Editor the change persists on the asset after Play.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="Writing to a public SO field is allowed by the compiler — that's exactly why it's dangerous.">
+                                C) It causes a compile error.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 3:</strong> Which belongs in a <strong>MonoBehaviour field</strong> rather than a ScriptableObject?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="Shared, designer-tuned config is the classic ScriptableObject use.">
+                                A) The base stats shared by every goblin.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! Current health is live, per-instance state that changes during play — a MonoBehaviour field.">
+                                B) This specific enemy's current health during play.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="A reusable audio library shared across scenes fits a ScriptableObject well.">
+                                C) The game's shared library of sound effects.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section 8: Summary -->
+            <section id="summary" class="lesson-section">
+                <h2>Summary</h2>
+
+                <div class="card card-success">
+                    <h3>🎉 Key Takeaways</h3>
+                    <ul>
+                        <li>A <strong>ScriptableObject</strong> is a data container saved as a project <em>asset</em> — no GameObject, no per-frame lifecycle.</li>
+                        <li>Author one by inheriting <code>ScriptableObject</code> and tagging it <code>[CreateAssetMenu]</code>; create instances from <em>Assets → Create</em>. Don't <code>new</code> it (use <code>CreateInstance</code> if needed).</li>
+                        <li>Reference the asset from a MonoBehaviour with <code>[SerializeField]</code>; <strong>read shared config from the asset, keep changing state in local fields</strong>.</li>
+                        <li>This enables <strong>data-driven design</strong>: one script, many data assets — designers add variety without code.</li>
+                        <li><strong>Gotcha:</strong> the asset is shared — writing to its fields at runtime changes it for everyone and persists in the Editor. Treat it as read-only; clone with <code>Instantiate</code> if you need a mutable copy.</li>
+                        <li>Choose by intent: shared "kind of thing" config → ScriptableObject; live per-object state → MonoBehaviour; throwaway runtime data → plain class.</li>
+                    </ul>
+                </div>
+
+                <h3>📚 Additional Resources</h3>
+                <ul>
+                    <li><a href="https://docs.unity3d.com/ScriptReference/ScriptableObject.html" target="_blank" rel="noopener">Scripting Reference — ScriptableObject</a></li>
+                    <li><a href="https://docs.unity3d.com/ScriptReference/CreateAssetMenuAttribute.html" target="_blank" rel="noopener">Scripting Reference — CreateAssetMenu</a></li>
+                    <li><a href="https://docs.unity3d.com/Manual/class-ScriptableObject.html" target="_blank" rel="noopener">Manual — ScriptableObject</a></li>
+                </ul>
+
+                <h3>🚀 What's Next?</h3>
+                <p>You can now separate data from behavior. Next we separate <em>systems</em> from each other. Lesson 3.2, <em>Events and Decoupling</em>, uses C# events, <code>UnityEvent</code>s, and ScriptableObject event channels so components can talk without knowing about each other — the cleanup pattern from Lesson 1.2 finally pays off.</p>
+
+                <!-- Encouragement Card -->
+                <div class="card card-accent" style="text-align: center; padding: 2rem;">
+                    <h3>🎉 Data, set free!</h3>
+                    <p>Your game's numbers now live where designers can shape them, shared and consistent. That's a hallmark of a professional, scalable Unity project.</p>
+                </div>
+            </section>
+
+            <!-- Lesson Navigation -->
+            <nav class="lesson-nav" aria-label="Lesson Navigation">
+                <a href="lesson_06.html" class="prev-lesson">← Previous: Lesson 2.3 — Instantiating and Destroying Objects</a>
+                <a href="index.html" class="home-link">🏠 Course Home</a>
+                <a href="lesson_08.html" class="next-lesson">Next: Lesson 3.2 — Events and Decoupling →</a>
+            </nav>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+        <p>&copy; 2026 Ray de la Paz. All rights reserved.</p>
+        <div class="footer-links">
+            <a href="https://rays-home.netlify.app/">Ray's House of Fun</a>
+            <a href="https://rays-home.netlify.app/contact">Contact</a>
+            <a href="#" id="print-button">Print Page</a>
+        </div>
+        <p><small>Press <kbd>?</kbd> for keyboard shortcuts</small></p>
+    </footer>
+
+    <!-- JavaScript -->
+    <script src="js/clipboard.js"></script>
+    <script src="js/course-enhancements.js"></script>
+</body>
+</html>

@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Add physics to Unity objects — Rigidbody, colliders, forces vs velocity vs MovePosition, and the OnCollision / OnTrigger callbacks that drive gameplay.">
+    <meta name="author" content="Ray de la Paz">
+    <title>Lesson 2.2: Physics and Collisions - C# Scripting in Unity</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="icon" type="image/png" href="favicon.png">
+    <!-- Mermaid — initialized by course-enhancements.js for theme awareness -->
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        window.__mermaid = mermaid;
+        // Initial config — JS will re-init on theme change
+        const isDark = localStorage.getItem('theme') === 'dark' ||
+            (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: isDark ? 'dark' : 'default',
+            themeVariables: isDark
+                ? { primaryColor: '#334155', primaryTextColor: '#e2e8f0', primaryBorderColor: '#6366f1', lineColor: '#94a3b8', secondaryColor: '#1e293b', tertiaryColor: '#0f172a' }
+                : { primaryColor: '#eff6ff', primaryTextColor: '#1e293b', primaryBorderColor: '#3b82f6', lineColor: '#64748b', secondaryColor: '#f8fafc', tertiaryColor: '#f1f5f9' }
+        });
+    </script>
+</head>
+<body>
+    <!-- Skip to main content for accessibility -->
+    <a href="#main-content" class="skip-to-main">Skip to main content</a>
+
+
+    <!-- Navigation -->
+    <nav class="main-nav">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo">C# Scripting in Unity</a>
+            <button id="mobile-menu-toggle" class="mobile-menu-toggle" aria-expanded="false" aria-controls="nav-links">
+                ☰
+            </button>
+            <div class="nav-links" id="nav-links">
+                <a href="index.html">Home</a>
+                <a href="index.html#modules">All Modules</a>
+                <span class="nav-divider"></span>
+                <a href="https://rays-home.netlify.app/">Ray's House of Fun</a>
+                <a href="https://rays-home.netlify.app/contact">Contact</a>
+                <button id="theme-toggle" aria-label="Toggle dark/light mode">🌙</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Breadcrumb -->
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+        <ul>
+            <li><a href="index.html">Home</a></li>
+            <li><a href="index.html#modules">Module 2</a></li>
+            <li aria-current="page">Lesson 2.2: Physics and Collisions</li>
+        </ul>
+    </nav>
+
+    <!-- Main Content -->
+    <main id="main-content">
+        <div class="container">
+            <!-- Lesson Header -->
+            <header>
+                <h1>📝 Lesson 2.2: Physics and Collisions</h1>
+                <p class="lead">Our cube from Lesson 2.1 walks through walls. This lesson gives objects <em>physical presence</em>: a <code>Rigidbody</code> so they fall and get pushed, <code>Colliders</code> so they bump, and the <code>OnCollision</code>/<code>OnTrigger</code> callbacks that turn a touch into gameplay — a coin collected, a hazard triggered.</p>
+
+                <!-- Learning objectives -->
+                <div class="card card-info">
+                    <h2>🎯 Learning Objectives</h2>
+                    <p>By the end of this lesson, you will be able to:</p>
+                    <ul>
+                        <li>Explain what a <code>Rigidbody</code> and a <code>Collider</code> each contribute to physics</li>
+                        <li>Move a physics object with forces, <code>linearVelocity</code>, or <code>MovePosition</code> — in <code>FixedUpdate</code></li>
+                        <li>Distinguish <strong>solid collisions</strong> from <strong>triggers</strong> (<code>isTrigger</code>)</li>
+                        <li>Handle <code>OnCollisionEnter</code> and <code>OnTriggerEnter</code> with the right parameter types</li>
+                        <li>State the rule for which objects need a Rigidbody for callbacks to fire</li>
+                        <li>Use <code>isKinematic</code> and understand tags/layers for collision logic</li>
+                    </ul>
+                    <p><strong>Estimated Time:</strong> 60 minutes</p>
+                    <p><strong>Project:</strong> A rolling ball that pushes crates (solid collisions) and collects coins that vanish on touch (triggers).</p>
+                </div>
+            </header>
+
+            <!-- Sticky Table of Contents -->
+            <details class="card toc-card" open>
+                <summary aria-label="Toggle table of contents">
+                    <span class="toc-icon" aria-hidden="true">📑</span>
+                    <span class="toc-label">In This Lesson</span>
+                    <span class="toc-chevron" aria-hidden="true">▾</span>
+                </summary>
+                <nav aria-label="Table of Contents">
+                    <ol>
+                        <li><a href="#introduction" class="toc-link">Rigidbody + Collider</a></li>
+                        <li><a href="#moving" class="toc-link">Moving with Physics</a></li>
+                        <li><a href="#collisions" class="toc-link">Collision Callbacks</a></li>
+                        <li><a href="#triggers" class="toc-link">Triggers</a></li>
+                        <li><a href="#matrix" class="toc-link">Who Needs a Rigidbody?</a></li>
+                        <li><a href="#tags" class="toc-link">Reacting to the Right Objects</a></li>
+                        <li><a href="#exercise" class="toc-link">Exercise &amp; Quiz</a></li>
+                        <li><a href="#summary" class="toc-link">Summary</a></li>
+                    </ol>
+                </nav>
+            </details>
+
+            <!-- Section 1: Rigidbody + Collider -->
+            <section id="introduction" class="lesson-section">
+                <h2>Rigidbody + Collider</h2>
+                <p>Physics in Unity is a partnership between two components. Neither does the job alone:</p>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>Component</th><th>Provides</th><th>Without it…</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td><strong>Rigidbody</strong></td><td>Makes the object <em>simulated</em>: gravity, mass, velocity, forces. The physics engine now moves it.</td><td>The object ignores gravity and forces — it only moves if you script its Transform.</td></tr>
+                            <tr><td><strong>Collider</strong></td><td>Defines the object's <em>shape</em> for contact (Box, Sphere, Capsule, Mesh). This is what actually touches things.</td><td>Objects pass straight through each other — nothing to collide with.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="card card-accent">
+                    <h4>📖 Definition</h4>
+                    <p>A <strong>Rigidbody</strong> hands control of an object's movement to Unity's physics engine. A <strong>Collider</strong> is an invisible shape that detects contact. A solid, pushable object needs <em>both</em>; a static wall needs only a Collider (the floor and walls don't move, so they don't need a Rigidbody).</p>
+                </div>
+
+                <div class="mermaid">
+                    graph LR
+                    RB["Rigidbody<br/>(mass, gravity, velocity)"] --> SIM["Physics engine<br/>simulates this object"]
+                    COL["Collider<br/>(the contact shape)"] --> SIM
+                    SIM --> R["Falls, collides,<br/>gets pushed, fires callbacks"]
+                    style RB fill:#eff6ff,stroke:#3b82f6,stroke-width:2px
+                    style COL fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                    style R fill:#f3e8ff,stroke:#8b5cf6,stroke-width:2px
+                </div>
+
+                <p>Add a <code>Rigidbody</code> to a cube above a floor, press Play, and it falls and lands — no code required. Primitive objects (Cube, Sphere) already come with a matching Collider; empty objects and imported models you add one to yourself.</p>
+            </section>
+
+            <!-- Section 2: Moving with physics -->
+            <section id="moving" class="lesson-section">
+                <h2>Moving with Physics</h2>
+                <p>Lesson 2.1 warned: don't set the <code>Transform</code> of a physics object — it teleports past colliders. Instead you tell the <code>Rigidbody</code> what to do, and it moves the object <em>through</em> the world, respecting collisions. There are three main ways, and all belong in <code>FixedUpdate</code> (the physics step, Lesson 1.2).</p>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>Technique</th><th>What it does</th><th>Best for</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td><code>AddForce(...)</code></td><td>Applies a push; acceleration builds up momentum.</td><td>Rockets, jumps, explosions — anything with inertia.</td></tr>
+                            <tr><td><code>linearVelocity = ...</code></td><td>Sets the velocity directly (instant, precise speed).</td><td>Arcade characters that need exact control.</td></tr>
+                            <tr><td><code>MovePosition(...)</code></td><td>Moves toward a target position with collision response.</td><td>Kinematic movers, platforms, precise stepping.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <pre><code class="language-csharp">using UnityEngine;
+
+[RequireComponent(typeof(Rigidbody))]
+public class BallController : MonoBehaviour
+{
+    [SerializeField] private float moveForce = 10f;
+    private Rigidbody body;
+    private Vector2 input;
+
+    void Awake() =&gt; body = GetComponent&lt;Rigidbody&gt;();
+
+    void Update()
+    {
+        // Read input every frame (Lesson 1.2 rule)…
+        input.x = Input.GetAxisRaw("Horizontal");
+        input.y = Input.GetAxisRaw("Vertical");
+    }
+
+    void FixedUpdate()
+    {
+        // …but APPLY physics on the fixed step.
+        Vector3 force = new Vector3(input.x, 0f, input.y) * moveForce;
+        body.AddForce(force);
+    }
+}</code></pre>
+
+                <div class="card card-warning">
+                    <h4>⚠️ Unity 6 name changes</h4>
+                    <p>In Unity 6 the Rigidbody property <code>velocity</code> was renamed <code>linearVelocity</code>, and <code>drag</code> / <code>angularDrag</code> became <code>linearDamping</code> / <code>angularDamping</code>. Older tutorials use the old names — they still compile (marked obsolete) but prefer the new ones. This course targets Unity 6.</p>
+                </div>
+
+                <blockquote>
+                    <strong>💡 Read in Update, apply in FixedUpdate.</strong> Notice the split above: input is polled in <code>Update</code> (so no press is missed) and stored, then the stored value drives the physics in <code>FixedUpdate</code>. This is the pattern promised back in Lesson 1.2, now in action.
+                </blockquote>
+            </section>
+
+            <!-- Section 3: Collisions -->
+            <section id="collisions" class="lesson-section">
+                <h2>Collision Callbacks</h2>
+                <p>When two solid colliders touch, Unity calls event functions on <em>both</em> objects' scripts — just like the lifecycle messages from Lesson 1.2, but triggered by contact. The three collision messages:</p>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>Callback</th><th>Fires when</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td><code>OnCollisionEnter(Collision c)</code></td><td>The moment two colliders first touch.</td></tr>
+                            <tr><td><code>OnCollisionStay(Collision c)</code></td><td>Each physics step they remain in contact.</td></tr>
+                            <tr><td><code>OnCollisionExit(Collision c)</code></td><td>The moment they separate.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <pre><code class="language-csharp">public class Crate : MonoBehaviour
+{
+    void OnCollisionEnter(Collision collision)
+    {
+        // 'collision' describes WHAT we hit and HOW.
+        Debug.Log($"Hit by {collision.gameObject.name}");
+
+        // Contact details are available too:
+        float impact = collision.relativeVelocity.magnitude;
+        if (impact &gt; 5f)
+            Debug.Log("That was a hard hit!");
+    }
+}</code></pre>
+
+                <div class="card card-info">
+                    <h4>💡 The <code>Collision</code> object</h4>
+                    <p><code>OnCollisionEnter</code> receives a <code>Collision</code> — rich data about the contact: <code>collision.gameObject</code> (what you hit), <code>collision.relativeVelocity</code> (impact speed), and <code>collision.contacts</code> (exact contact points/normals). Note it's <code>collision.gameObject</code>, not the collision itself, that gives you the other object.</p>
+                </div>
+            </section>
+
+            <!-- Section 4: Triggers -->
+            <section id="triggers" class="lesson-section">
+                <h2>Triggers: Detect Without Blocking</h2>
+                <p>Sometimes you want to know something entered an area <em>without</em> physically stopping it — a coin to collect, a checkpoint, a damage zone. That's a <strong>trigger</strong>: tick <em>Is Trigger</em> on the collider, and it stops being solid but still reports overlaps through a separate set of callbacks.</p>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>Solid collision</th><th>Trigger</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Objects physically block each other</td><td>Objects pass through</td></tr>
+                            <tr><td><code>OnCollisionEnter(Collision)</code></td><td><code>OnTriggerEnter(Collider)</code></td></tr>
+                            <tr><td>Parameter: <code>Collision</code> (rich contact data)</td><td>Parameter: <code>Collider</code> (just the other collider)</td></tr>
+                            <tr><td>Crates, walls, the player's body</td><td>Coins, checkpoints, damage/pickup zones</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <pre><code class="language-csharp">public class Coin : MonoBehaviour
+{
+    // Note: OnTriggerEnter takes a Collider, NOT a Collision.
+    void OnTriggerEnter(Collider other)
+    {
+        if (other.CompareTag("Player"))
+        {
+            Debug.Log("Coin collected!");
+            Destroy(gameObject);   // remove the coin (Lesson 1.1)
+        }
+    }
+}</code></pre>
+
+                <div class="card card-warning">
+                    <h4>⚠️ Two easy mistakes to mix up</h4>
+                    <p><strong>(1) Wrong parameter type:</strong> <code>OnTriggerEnter</code> takes a <code>Collider</code>; <code>OnCollisionEnter</code> takes a <code>Collision</code>. Swap them and — because these are name-matched (Lesson 1.2) — your method simply never fires, with no error. <strong>(2) Use <code>CompareTag("Player")</code></strong>, not <code>other.tag == "Player"</code>: <code>CompareTag</code> is faster and avoids a string allocation.</p>
+                </div>
+
+                <blockquote>
+                    <strong>💡 Triggers also have Stay/Exit:</strong> <code>OnTriggerStay(Collider)</code> and <code>OnTriggerExit(Collider)</code> mirror the collision versions — great for "while inside the damage zone" or "left the safe area."
+                </blockquote>
+            </section>
+
+            <!-- Section 5: Matrix / who needs rigidbody -->
+            <section id="matrix" class="lesson-section">
+                <h2>Who Needs a Rigidbody?</h2>
+                <p>Here's the rule that trips up nearly every beginner: <strong>for collision/trigger callbacks to fire, at least one of the two objects in the contact must have a <code>Rigidbody</code>.</strong> Two purely static colliders touching produce <em>no</em> callbacks — the physics engine isn't simulating either of them.</p>
+
+                <div class="mermaid">
+                    graph TD
+                    A["Coin: Collider (Is Trigger)<br/>NO Rigidbody"]
+                    B["Player: Collider + Rigidbody"]
+                    B -->|"walks into"| A
+                    A -->|"✅ fires OnTriggerEnter<br/>(because Player has a Rigidbody)"| OK["Callback runs"]
+                    style B fill:#eff6ff,stroke:#3b82f6,stroke-width:2px
+                    style OK fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                </div>
+
+                <p>In the example above, the coin has no Rigidbody, yet the trigger still fires — because the <em>player</em> that walked into it does. That's the usual arrangement: the moving thing (player, projectile) carries the Rigidbody; static pickups and zones just have a trigger collider.</p>
+
+                <div class="card card-accent">
+                    <h4>📖 Definition: kinematic Rigidbody</h4>
+                    <p>Set <code>isKinematic = true</code> (or tick <em>Is Kinematic</em>) and the Rigidbody stops responding to forces and gravity — <em>you</em> move it via <code>MovePosition</code>, but it still participates in collisions and, crucially, <strong>satisfies the "needs a Rigidbody" rule</strong>. Perfect for moving platforms, elevators, and script-driven doors that should still trigger and block.</p>
+                </div>
+
+                <div class="card card-success">
+                    <h4>✅ Quick decision guide</h4>
+                    <ul>
+                        <li><strong>Moves under physics</strong> (falls, gets pushed): Rigidbody, not kinematic.</li>
+                        <li><strong>Moves by script but must collide/trigger</strong>: kinematic Rigidbody + <code>MovePosition</code>.</li>
+                        <li><strong>Never moves</strong> (walls, floor): Collider only, no Rigidbody.</li>
+                        <li><strong>A detection zone</strong>: Collider with <em>Is Trigger</em>; give the <em>other</em> party the Rigidbody.</li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- Section 6: Tags & layers -->
+            <section id="tags" class="lesson-section">
+                <h2>Reacting to the Right Objects</h2>
+                <p>A trigger fires for <em>anything</em> that enters it. Usually you only care about specific things — a coin should react to the player, not to a stray crate. Two tools filter contacts:</p>
+
+                <h3>Tags — identify individual objects</h3>
+                <p>A <strong>tag</strong> is a label you assign in the Inspector ("Player", "Enemy", "Coin"). Check it with <code>CompareTag</code>:</p>
+                <pre><code class="language-csharp">void OnTriggerEnter(Collider other)
+{
+    if (!other.CompareTag("Player")) return;   // ignore everything else
+    Collect();
+}</code></pre>
+
+                <h3>Layers — group objects for the physics engine</h3>
+                <p>A <strong>layer</strong> groups objects so physics can decide, via the <em>Layer Collision Matrix</em> (Project Settings → Physics), which layers even interact. Put projectiles on a "PlayerBullets" layer that only collides with "Enemies," and enemy-to-enemy or bullet-to-bullet contacts are skipped entirely — cheaper and simpler than filtering in code.</p>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th></th><th>Tag</th><th>Layer</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Purpose</td><td>Identify <em>what</em> an object is, in code</td><td>Control <em>which groups</em> collide, in the engine</td></tr>
+                            <tr><td>Checked by</td><td><code>CompareTag(...)</code> in a callback</td><td>The Layer Collision Matrix (before callbacks)</td></tr>
+                            <tr><td>Use for</td><td>"Is this the player?"</td><td>"Should bullets ignore other bullets?"</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <blockquote>
+                    <strong>💡 Rule of thumb:</strong> use <strong>tags</strong> to identify a specific object inside a callback, and <strong>layers</strong> to stop unwanted collisions from happening at all. Filtering with layers is more efficient because those contacts are never even generated.
+                </blockquote>
+            </section>
+
+            <!-- Section 7: Exercise & Quiz -->
+            <section id="exercise" class="lesson-section">
+                <h2>Exercise &amp; Quiz</h2>
+
+                <div class="card card-info">
+                    <h3>🏋️ Exercise: Roll, Push, and Collect</h3>
+                    <p><strong>Objective:</strong> Build a physics ball that pushes crates (solid) and collects coins (trigger) — using both callback families.</p>
+
+                    <h4>Instructions:</h4>
+                    <ol>
+                        <li>Make a Plane floor. Add a Sphere named <code>Ball</code> with a <code>Rigidbody</code>; tag it <code>Player</code>.</li>
+                        <li>Write <code>BallController</code> (see Section 2) to roll it with <code>AddForce</code> in <code>FixedUpdate</code>.</li>
+                        <li>Add a few Cubes as <code>Crate</code>s with Rigidbodies — the ball should shove them on contact (no code needed, physics does it). Optionally log hits with <code>OnCollisionEnter</code>.</li>
+                        <li>Add small Cubes as <code>Coin</code>s: tick <em>Is Trigger</em> on their colliders, <strong>no</strong> Rigidbody. Write the <code>Coin</code> script so rolling over one destroys it — but only if the toucher is tagged <code>Player</code>.</li>
+                        <li>Verify: crates block/push (solid), coins vanish silently (trigger). Ask yourself why the trigger fires even though coins have no Rigidbody.</li>
+                    </ol>
+
+                    <h4>Starter Code:</h4>
+                    <pre><code class="language-csharp">using UnityEngine;
+
+public class Coin : MonoBehaviour
+{
+    void OnTriggerEnter(Collider other)
+    {
+        // TODO: if 'other' is tagged "Player", destroy this coin.
+    }
+}</code></pre>
+
+                    <details>
+                        <summary>💡 Hint</summary>
+                        <p>Guard with <code>if (other.CompareTag("Player"))</code> then <code>Destroy(gameObject)</code>. The trigger works because the Ball has a Rigidbody — the rule only needs <em>one</em> of the pair to have one. Make sure the coin's collider has <em>Is Trigger</em> checked, or you'll get a solid bump instead.</p>
+                    </details>
+
+                    <details>
+                        <summary>✅ Solution</summary>
+                        <pre><code class="language-csharp">using UnityEngine;
+
+public class Coin : MonoBehaviour
+{
+    [SerializeField] private int value = 1;
+
+    void OnTriggerEnter(Collider other)
+    {
+        if (!other.CompareTag("Player")) return;
+
+        Debug.Log($"Collected coin worth {value}");
+        Destroy(gameObject);
+    }
+}</code></pre>
+                        <pre><code class="language-csharp">using UnityEngine;
+
+[RequireComponent(typeof(Rigidbody))]
+public class BallController : MonoBehaviour
+{
+    [SerializeField] private float moveForce = 10f;
+    private Rigidbody body;
+    private Vector2 input;
+
+    void Awake() =&gt; body = GetComponent&lt;Rigidbody&gt;();
+
+    void Update()
+    {
+        input.x = Input.GetAxisRaw("Horizontal");
+        input.y = Input.GetAxisRaw("Vertical");
+    }
+
+    void FixedUpdate()
+    {
+        body.AddForce(new Vector3(input.x, 0f, input.y) * moveForce);
+    }
+
+    // Optional: log solid hits with crates.
+    void OnCollisionEnter(Collision collision)
+    {
+        if (collision.gameObject.CompareTag("Crate"))
+            Debug.Log($"Pushed {collision.gameObject.name}");
+    }
+}</code></pre>
+                        <p>Two callback families, two behaviors: crates use solid <code>OnCollisionEnter</code>/physics response; coins use <code>OnTriggerEnter</code> and vanish. The coin needs no Rigidbody because the Ball supplies one for the contact.</p>
+                    </details>
+                </div>
+
+                <!-- Quiz Section -->
+                <div class="card quiz-container">
+                    <h3>🎯 Quick Quiz</h3>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 1:</strong> You want a coin the player passes <em>through</em> but that still detects the touch. How is its collider set up?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="A solid collider would block the player, not let them pass through.">
+                                A) A normal solid collider, handled in <code>OnCollisionEnter</code>.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! Is Trigger makes it non-solid but still reports overlaps via OnTriggerEnter(Collider).">
+                                B) A collider with <em>Is Trigger</em> enabled, handled in <code>OnTriggerEnter</code>.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="Removing the collider means nothing is detected at all.">
+                                C) No collider at all.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 2:</strong> A trigger between a coin and the player never fires. Both have colliders and the coin's <em>Is Trigger</em> is on. What's the most likely fix?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! At least one of the two objects must have a Rigidbody for trigger/collision callbacks to fire. Give the player one.">
+                                A) Ensure at least one of them (usually the player) has a <code>Rigidbody</code>.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="Callbacks don't need to be public or use override — they're name-matched.">
+                                B) Make <code>OnTriggerEnter</code> <code>public override</code>.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="deltaTime has nothing to do with whether a collision is detected.">
+                                C) Multiply the movement by <code>Time.deltaTime</code>.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 3:</strong> Where should you apply <code>AddForce</code> to a Rigidbody, and why?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="Update's variable rate makes physics inconsistent.">
+                                A) In <code>Update</code>, because it runs most often.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! Physics runs on the fixed timestep, so Rigidbody forces belong in FixedUpdate for consistent simulation.">
+                                B) In <code>FixedUpdate</code>, because physics runs on the fixed timestep.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="OnCollisionEnter only runs on contact — not a place to drive continuous movement.">
+                                C) In <code>OnCollisionEnter</code>, so it only pushes on contact.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section 8: Summary -->
+            <section id="summary" class="lesson-section">
+                <h2>Summary</h2>
+
+                <div class="card card-success">
+                    <h3>🎉 Key Takeaways</h3>
+                    <ul>
+                        <li>A <strong>Rigidbody</strong> makes an object physics-simulated; a <strong>Collider</strong> gives it a contact shape. Solid, pushable objects need both.</li>
+                        <li>Move physics objects via <code>AddForce</code>, <code>linearVelocity</code>, or <code>MovePosition</code> — always in <code>FixedUpdate</code>, never by setting the Transform.</li>
+                        <li><strong>Solid</strong> contacts fire <code>OnCollisionEnter(Collision)</code>; <strong>triggers</strong> (<em>Is Trigger</em>) fire <code>OnTriggerEnter(Collider)</code> — mind the different parameter types.</li>
+                        <li>Callbacks only fire if <strong>at least one</strong> object in the contact has a Rigidbody (a <code>isKinematic</code> one counts).</li>
+                        <li>Filter contacts with <strong>tags</strong> (<code>CompareTag</code> in code) and <strong>layers</strong> (the Layer Collision Matrix, before contact).</li>
+                        <li>Unity 6 renames: <code>velocity</code> → <code>linearVelocity</code>, <code>drag</code> → <code>linearDamping</code>.</li>
+                    </ul>
+                </div>
+
+                <h3>📚 Additional Resources</h3>
+                <ul>
+                    <li><a href="https://docs.unity3d.com/ScriptReference/Rigidbody.html" target="_blank" rel="noopener">Scripting Reference — Rigidbody</a></li>
+                    <li><a href="https://docs.unity3d.com/ScriptReference/Collider.OnCollisionEnter.html" target="_blank" rel="noopener">Scripting Reference — OnCollisionEnter</a></li>
+                    <li><a href="https://docs.unity3d.com/ScriptReference/Collider.OnTriggerEnter.html" target="_blank" rel="noopener">Scripting Reference — OnTriggerEnter</a></li>
+                    <li><a href="https://docs.unity3d.com/Manual/CollidersOverview.html" target="_blank" rel="noopener">Manual — Colliders &amp; the collision action matrix</a></li>
+                </ul>
+
+                <h3>🚀 What's Next?</h3>
+                <p>Objects now collide and react — but our coins were placed by hand. In Lesson 2.3, <em>Instantiating and Destroying Objects</em>, we spawn objects at runtime from <strong>prefabs</strong> (fire bullets, spawn enemies) and manage their lifecycle cleanly.</p>
+
+                <!-- Encouragement Card -->
+                <div class="card card-accent" style="text-align: center; padding: 2rem;">
+                    <h3>🎉 Your world has weight now!</h3>
+                    <p>Gravity, pushing, collecting, triggering — the core verbs of most games. You've built the physical layer everything else sits on.</p>
+                </div>
+            </section>
+
+            <!-- Lesson Navigation -->
+            <nav class="lesson-nav" aria-label="Lesson Navigation">
+                <a href="lesson_04.html" class="prev-lesson">← Previous: Lesson 2.1 — Input and Movement</a>
+                <a href="index.html" class="home-link">🏠 Course Home</a>
+                <a href="lesson_06.html" class="next-lesson">Next: Lesson 2.3 — Instantiating and Destroying Objects →</a>
+            </nav>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+        <p>&copy; 2026 Ray de la Paz. All rights reserved.</p>
+        <div class="footer-links">
+            <a href="https://rays-home.netlify.app/">Ray's House of Fun</a>
+            <a href="https://rays-home.netlify.app/contact">Contact</a>
+            <a href="#" id="print-button">Print Page</a>
+        </div>
+        <p><small>Press <kbd>?</kbd> for keyboard shortcuts</small></p>
+    </footer>
+
+    <!-- JavaScript -->
+    <script src="js/clipboard.js"></script>
+    <script src="js/course-enhancements.js"></script>
+</body>
+</html>

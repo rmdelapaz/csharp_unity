@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Master Unity's event function lifecycle — Awake, OnEnable, Start, Update, FixedUpdate, LateUpdate, and OnDestroy — the exact order Unity calls them, and which one to use for what.">
+    <meta name="author" content="Ray de la Paz">
+    <title>Lesson 1.2: The Event Function Lifecycle - C# Scripting in Unity</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="icon" type="image/png" href="favicon.png">
+    <!-- Mermaid — initialized by course-enhancements.js for theme awareness -->
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        window.__mermaid = mermaid;
+        // Initial config — JS will re-init on theme change
+        const isDark = localStorage.getItem('theme') === 'dark' ||
+            (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: isDark ? 'dark' : 'default',
+            themeVariables: isDark
+                ? { primaryColor: '#334155', primaryTextColor: '#e2e8f0', primaryBorderColor: '#6366f1', lineColor: '#94a3b8', secondaryColor: '#1e293b', tertiaryColor: '#0f172a' }
+                : { primaryColor: '#eff6ff', primaryTextColor: '#1e293b', primaryBorderColor: '#3b82f6', lineColor: '#64748b', secondaryColor: '#f8fafc', tertiaryColor: '#f1f5f9' }
+        });
+    </script>
+</head>
+<body>
+    <!-- Skip to main content for accessibility -->
+    <a href="#main-content" class="skip-to-main">Skip to main content</a>
+
+
+    <!-- Navigation -->
+    <nav class="main-nav">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo">C# Scripting in Unity</a>
+            <button id="mobile-menu-toggle" class="mobile-menu-toggle" aria-expanded="false" aria-controls="nav-links">
+                ☰
+            </button>
+            <div class="nav-links" id="nav-links">
+                <a href="index.html">Home</a>
+                <a href="index.html#modules">All Modules</a>
+                <span class="nav-divider"></span>
+                <a href="https://rays-home.netlify.app/">Ray's House of Fun</a>
+                <a href="https://rays-home.netlify.app/contact">Contact</a>
+                <button id="theme-toggle" aria-label="Toggle dark/light mode">🌙</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Breadcrumb -->
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+        <ul>
+            <li><a href="index.html">Home</a></li>
+            <li><a href="index.html#modules">Module 1</a></li>
+            <li aria-current="page">Lesson 1.2: The Event Function Lifecycle</li>
+        </ul>
+    </nav>
+
+    <!-- Main Content -->
+    <main id="main-content">
+        <div class="container">
+            <!-- Lesson Header -->
+            <header>
+                <h1>📝 Lesson 1.2: The Event Function Lifecycle</h1>
+                <p class="lead">In Lesson 1.1 you learned that Unity calls <em>into</em> your MonoBehaviour rather than you calling it. This lesson is the map of <strong>when</strong>: the event functions — <code>Awake</code>, <code>OnEnable</code>, <code>Start</code>, <code>Update</code>, <code>FixedUpdate</code>, <code>LateUpdate</code>, <code>OnDisable</code>, <code>OnDestroy</code> — and the precise order Unity fires them.</p>
+
+                <!-- Learning objectives -->
+                <div class="card card-info">
+                    <h2>🎯 Learning Objectives</h2>
+                    <p>By the end of this lesson, you will be able to:</p>
+                    <ul>
+                        <li>Name the core event functions and the order Unity invokes them in</li>
+                        <li>Choose correctly between <code>Awake</code> and <code>Start</code> for initialization</li>
+                        <li>Explain why physics goes in <code>FixedUpdate</code> and per-frame logic in <code>Update</code></li>
+                        <li>Use <code>LateUpdate</code> for camera follow and other "after everyone moved" work</li>
+                        <li>Understand <code>OnEnable</code>/<code>OnDisable</code>/<code>OnDestroy</code> for setup and cleanup</li>
+                        <li>Recognize that these functions are called by <em>signature</em>, not by an interface or <code>override</code></li>
+                    </ul>
+                    <p><strong>Estimated Time:</strong> 60 minutes</p>
+                    <p><strong>Project:</strong> Instrument a script that logs every lifecycle event, then reason about the exact console order it produces.</p>
+                </div>
+            </header>
+
+            <!-- Sticky Table of Contents -->
+            <details class="card toc-card" open>
+                <summary aria-label="Toggle table of contents">
+                    <span class="toc-icon" aria-hidden="true">📑</span>
+                    <span class="toc-label">In This Lesson</span>
+                    <span class="toc-chevron" aria-hidden="true">▾</span>
+                </summary>
+                <nav aria-label="Table of Contents">
+                    <ol>
+                        <li><a href="#introduction" class="toc-link">Event Functions, Not <code>Main</code></a></li>
+                        <li><a href="#order" class="toc-link">The Lifecycle Order</a></li>
+                        <li><a href="#init" class="toc-link">Awake vs OnEnable vs Start</a></li>
+                        <li><a href="#loops" class="toc-link">Update, FixedUpdate &amp; LateUpdate</a></li>
+                        <li><a href="#teardown" class="toc-link">OnDisable &amp; OnDestroy</a></li>
+                        <li><a href="#magic" class="toc-link">Why No <code>override</code>?</a></li>
+                        <li><a href="#exercise" class="toc-link">Exercise &amp; Quiz</a></li>
+                        <li><a href="#summary" class="toc-link">Summary</a></li>
+                    </ol>
+                </nav>
+            </details>
+
+            <!-- Section 1: Intro -->
+            <section id="introduction" class="lesson-section">
+                <h2>Event Functions, Not <code>Main</code></h2>
+                <p>A console program has one timeline you control. A Unity game has a <strong>player loop</strong> that the engine runs many times per second, and at well-defined moments it calls the methods you've defined on your components. Those methods are the <strong>event functions</strong> (Unity also calls them "messages").</p>
+
+                <div class="card card-accent">
+                    <h4>📖 Definition</h4>
+                    <p>An <strong>event function</strong> is a specially-named method (like <code>Update</code> or <code>Start</code>) that Unity calls automatically at a specific point in a component's life. You don't call these yourself and you don't register them — you just define a method with the right name and signature, and the engine finds it.</p>
+                </div>
+
+                <p>You already met two of them in Lesson 1.1: <code>Start</code> (for setup) and <code>Update</code> (for per-frame logic). There are more, and knowing which runs when is the difference between code that works and code that mysteriously reads a value before it was set.</p>
+
+                <blockquote>
+                    <strong>💡 The one-line summary:</strong> <em>Awake/OnEnable/Start</em> run once at birth, <em>Update/FixedUpdate/LateUpdate</em> run every frame or physics step, and <em>OnDisable/OnDestroy</em> run at death. Get those three phases straight and the rest is detail.
+                </blockquote>
+            </section>
+
+            <!-- Section 2: Order -->
+            <section id="order" class="lesson-section">
+                <h2>The Lifecycle Order</h2>
+                <p>Here is the sequence for a single component, from the moment it's created to the moment it's destroyed. Unity guarantees this ordering <em>within one component</em>:</p>
+
+                <div class="mermaid">
+                    graph TD
+                    A["Awake()<br/>once — object created"] --> B["OnEnable()<br/>each time it becomes enabled"]
+                    B --> C["Start()<br/>once — before first Update"]
+                    C --> D{"Per-frame loop<br/>(repeats every frame)"}
+                    D --> E["FixedUpdate()<br/>0, 1, or many times<br/>(physics step)"]
+                    E --> F["Update()<br/>once per frame"]
+                    F --> G["LateUpdate()<br/>once per frame, after all Updates"]
+                    G --> D
+                    D -->|"disabled or destroyed"| H["OnDisable()"]
+                    H --> I["OnDestroy()<br/>once — object destroyed"]
+                    style A fill:#eff6ff,stroke:#3b82f6,stroke-width:2px
+                    style C fill:#eff6ff,stroke:#3b82f6,stroke-width:2px
+                    style F fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                    style I fill:#fdecea,stroke:#c0392b,stroke-width:2px
+                </div>
+
+                <p>Two subtleties this diagram captures that trip people up:</p>
+                <ul>
+                    <li><code>FixedUpdate</code> can run <strong>zero, one, or several times</strong> per rendered frame — it's tied to the physics clock, not the frame rate.</li>
+                    <li><code>LateUpdate</code> always runs <strong>after every</strong> component's <code>Update</code> that frame — that's what makes it perfect for "react to where things ended up."</li>
+                </ul>
+
+                <div class="card card-warning">
+                    <h4>⚠️ Watch Out: order <em>across</em> objects isn't guaranteed</h4>
+                    <p>Unity guarantees the order of phases <em>within</em> a component, but <strong>not</strong> the order in which the same function runs across different GameObjects. Object A's <code>Update</code> may run before or after Object B's <code>Update</code>. Never write code that depends on "my Update runs before that other object's Update" — use the initialization split (next section) or explicit references instead. (You <em>can</em> force it via Project Settings → Script Execution Order, but treat that as a last resort.)</p>
+                </div>
+            </section>
+
+            <!-- Section 3: Init -->
+            <section id="init" class="lesson-section">
+                <h2>Awake vs OnEnable vs Start</h2>
+                <p>All three run near the beginning, but at different moments and for different jobs. Using the wrong one causes the classic "null on the first frame" bug.</p>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>Function</th><th>When</th><th>Use it for</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td><code>Awake()</code></td><td>Once, when the object is created — before any <code>Start</code>, even if the component is disabled.</td><td>Setting up <em>this</em> object: caching your own components, initializing internal state. No dependence on other objects being ready.</td></tr>
+                            <tr><td><code>OnEnable()</code></td><td>Every time the component becomes enabled/active (so it can run many times over a life).</td><td>Subscribing to events, resetting on re-activation (pooled objects). Pairs with <code>OnDisable</code>.</td></tr>
+                            <tr><td><code>Start()</code></td><td>Once, just before the first <code>Update</code> — after <em>every</em> object's <code>Awake</code> has run.</td><td>Logic that depends on <em>other</em> objects already being initialized.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <p>The key insight is the <strong>two-phase startup</strong>: Unity runs <em>all</em> <code>Awake</code> calls first, then <em>all</em> <code>Start</code> calls. So anything you set up in <code>Awake</code> is safe to read from any <code>Start</code>. That's how you dodge the cross-object ordering problem.</p>
+
+                <pre><code class="language-csharp">using UnityEngine;
+
+public class Player : MonoBehaviour
+{
+    private Rigidbody body;   // a reference to our own physics component
+
+    void Awake()
+    {
+        // Set up MYSELF here. This is safe — it doesn't need other objects.
+        body = GetComponent&lt;Rigidbody&gt;();
+    }
+
+    void Start()
+    {
+        // By now every other object's Awake has run, so cross-object lookups are safe.
+        GameManager.Instance.RegisterPlayer(this);
+    }
+}</code></pre>
+
+                <div class="card card-success">
+                    <h4>✅ Simple rule</h4>
+                    <p>Set up <strong>yourself</strong> in <code>Awake</code>. Talk to <strong>others</strong> in <code>Start</code>. Subscribe/unsubscribe to events in <code>OnEnable</code>/<code>OnDisable</code>.</p>
+                </div>
+
+                <blockquote>
+                    <strong>⚠️ Important:</strong> Remember from Lesson 1.1 — put initialization here, <em>not</em> in a constructor. Unity constructs your component itself, before the GameObject is wired up, so a constructor runs too early and on the wrong thread for most Unity APIs.
+                </blockquote>
+            </section>
+
+            <!-- Section 4: Loops -->
+            <section id="loops" class="lesson-section">
+                <h2>Update, FixedUpdate &amp; LateUpdate</h2>
+                <p>These three are the beating heart of gameplay — they run over and over. Choosing the right one is mostly about <em>the clock each one follows</em>.</p>
+
+                <h3><code>Update()</code> — once per rendered frame</h3>
+                <p>Runs once every frame, so its rate rises and falls with performance (60 fps → 60 calls/sec; 30 fps → 30). Use it for input polling, timers, non-physics movement, and general game logic. Because frame time varies, multiply movement by <code>Time.deltaTime</code> to stay frame-rate independent:</p>
+                <pre><code class="language-csharp">void Update()
+{
+    // Move 5 units per SECOND regardless of frame rate.
+    transform.Translate(0f, 0f, 5f * Time.deltaTime);
+}</code></pre>
+
+                <h3><code>FixedUpdate()</code> — on the physics clock</h3>
+                <p>Runs on a fixed timestep (0.02s / 50 times per second by default), decoupled from the frame rate. This is where all <strong>physics</strong> code belongs — anything touching a <code>Rigidbody</code> (forces, velocity). Because its interval is constant, use <code>Time.fixedDeltaTime</code> here (or just rely on the physics engine's own integration):</p>
+                <pre><code class="language-csharp">private Rigidbody body;
+
+void Awake() =&gt; body = GetComponent&lt;Rigidbody&gt;();
+
+void FixedUpdate()
+{
+    // Apply physics forces here, NOT in Update.
+    body.AddForce(Vector3.forward * 10f);
+}</code></pre>
+
+                <div class="card card-warning">
+                    <h4>⚠️ Watch Out: read input in Update, apply it in FixedUpdate</h4>
+                    <p>Input events (like a key-down) can be missed if you poll them in <code>FixedUpdate</code>, because it doesn't run every frame. Read input in <code>Update</code>, store it in a field, and <em>use</em> that stored value inside <code>FixedUpdate</code> to drive physics.</p>
+                </div>
+
+                <h3><code>LateUpdate()</code> — after all Updates</h3>
+                <p>Runs once per frame too, but guaranteed <em>after every</em> <code>Update</code> has finished. The textbook use is a <strong>camera that follows the player</strong>: you want the camera to reposition only after the player has already moved this frame, otherwise it lags or jitters.</p>
+                <pre><code class="language-csharp">public Transform target;   // the player, assigned in the Inspector
+
+void LateUpdate()
+{
+    // The player already moved in its Update; now we follow.
+    transform.position = target.position + new Vector3(0f, 5f, -10f);
+}</code></pre>
+
+                <div class="mermaid">
+                    graph LR
+                    I["Input &amp; game logic<br/>➜ Update()"] --> P["Physics &amp; forces<br/>➜ FixedUpdate()"]
+                    P --> L["Follow / cleanup after movement<br/>➜ LateUpdate()"]
+                    style I fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                    style P fill:#eff6ff,stroke:#3b82f6,stroke-width:2px
+                    style L fill:#f3e8ff,stroke:#8b5cf6,stroke-width:2px
+                </div>
+
+                <div class="card card-info">
+                    <h4>💡 deltaTime vs fixedDeltaTime</h4>
+                    <p><code>Time.deltaTime</code> = seconds since the last frame (varies) — use in <code>Update</code>/<code>LateUpdate</code>. <code>Time.fixedDeltaTime</code> = the fixed physics step (constant) — use in <code>FixedUpdate</code>. Handy fact: <code>Time.deltaTime</code> automatically returns <code>fixedDeltaTime</code> when read inside <code>FixedUpdate</code>, so <code>* Time.deltaTime</code> is safe in both.</p>
+                </div>
+            </section>
+
+            <!-- Section 5: Teardown -->
+            <section id="teardown" class="lesson-section">
+                <h2>OnDisable &amp; OnDestroy</h2>
+                <p>Every setup has a matching teardown. Skipping cleanup is a top source of Unity bugs — dangling event subscriptions that fire on dead objects, or "leaked" listeners.</p>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>Function</th><th>When</th><th>Use it for</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td><code>OnDisable()</code></td><td>Whenever the component is disabled or its GameObject deactivated (can happen many times).</td><td>Undo what <code>OnEnable</code> did — unsubscribe from events, stop timers.</td></tr>
+                            <tr><td><code>OnDestroy()</code></td><td>Once, when the component/GameObject is destroyed (or the scene unloads).</td><td>Final cleanup — release resources, save state, unregister from managers.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <p>The most important pattern in the whole lesson: <strong>subscribe in <code>OnEnable</code>, unsubscribe in <code>OnDisable</code></strong>. They're mirror images, so subscriptions never leak:</p>
+                <pre><code class="language-csharp">public class ScoreListener : MonoBehaviour
+{
+    void OnEnable()
+    {
+        GameEvents.ScoreChanged += HandleScoreChanged;   // subscribe
+    }
+
+    void OnDisable()
+    {
+        GameEvents.ScoreChanged -= HandleScoreChanged;   // ALWAYS undo it
+    }
+
+    void HandleScoreChanged(int newScore) =&gt; Debug.Log($"Score: {newScore}");
+}</code></pre>
+
+                <blockquote>
+                    <strong>💡 Note on order:</strong> when an object is destroyed, Unity calls <code>OnDisable</code> <em>first</em>, then <code>OnDestroy</code>. So the unsubscribe in <code>OnDisable</code> also covers the destroy case — you rarely need to repeat it in <code>OnDestroy</code>. (We go deep on C# events and this pattern in Lesson 3.2.)
+                </blockquote>
+            </section>
+
+            <!-- Section 6: Magic / no override -->
+            <section id="magic" class="lesson-section">
+                <h2>Why No <code>override</code>?</h2>
+                <p>A sharp C# programmer notices something odd: you write <code>void Update()</code> with no <code>override</code>, no <code>interface</code>, and often <code>private</code>. How does Unity call a private method you never registered?</p>
+
+                <p>Unity finds these methods <strong>by name and signature</strong> when your script first runs, using a fast internal lookup (not ordinary reflection every frame). If a method with the right name exists, Unity wires it into the loop; if not, it simply isn't called. This is why:</p>
+                <ul>
+                    <li>An empty <code>Update()</code> still has a small cost — Unity is invoking it every frame. Delete event functions you don't use.</li>
+                    <li>A <strong>typo silently does nothing</strong>: <code>void Updaet()</code> or <code>void update()</code> compiles fine and is simply never called. Case and spelling must be exact.</li>
+                    <li>Signatures matter: <code>Update()</code> takes no parameters; <code>OnCollisionEnter(Collision c)</code> takes exactly one of the right type.</li>
+                </ul>
+
+                <div class="card card-warning">
+                    <h4>⚠️ The #1 beginner bug in this lesson</h4>
+                    <p>Your movement code "does nothing" and there's no error. Nine times out of ten it's a misspelled or mis-cased event function (<code>Start</code> vs <code>start</code>, <code>Update</code> vs <code>Updte</code>). The compiler can't help — the name just doesn't match, so Unity never calls it.</p>
+                </div>
+
+                <div class="card card-success">
+                    <h4>✅ Pro Tip</h4>
+                    <p>Let the editor generate these for you. In Visual Studio / Rider, typing the method name offers an autocomplete stub with the correct signature — the safest way to avoid typos. And keep <code>Update</code> lean: heavy work every frame is the most common Unity performance mistake (Lesson 5.1).</p>
+                </div>
+            </section>
+
+            <!-- Section 7: Exercise & Quiz -->
+            <section id="exercise" class="lesson-section">
+                <h2>Exercise &amp; Quiz</h2>
+
+                <div class="card card-info">
+                    <h3>🏋️ Exercise: The Lifecycle Logger</h3>
+                    <p><strong>Objective:</strong> See the lifecycle with your own eyes by logging every event, then predict the console output before you run it.</p>
+
+                    <h4>Instructions:</h4>
+                    <ol>
+                        <li>Create a script <code>LifecycleLogger.cs</code> and attach it to any GameObject (e.g. an empty one named <code>Probe</code>).</li>
+                        <li>Implement <code>Awake</code>, <code>OnEnable</code>, <code>Start</code>, <code>Update</code>, <code>OnDisable</code>, and <code>OnDestroy</code>, each logging its own name with <code>Debug.Log</code>.</li>
+                        <li>Guard <code>Update</code> so it only logs the first few frames (otherwise it floods the console).</li>
+                        <li>Press Play, watch the Console, then stop Play mode. <strong>Predict the order first</strong>, then check.</li>
+                        <li>Bonus: toggle the component's checkbox off and on in the Inspector during Play — which functions fire?</li>
+                    </ol>
+
+                    <h4>Starter Code:</h4>
+                    <pre><code class="language-csharp">using UnityEngine;
+
+public class LifecycleLogger : MonoBehaviour
+{
+    void Awake()  { Debug.Log("1. Awake"); }
+    // TODO: add OnEnable, Start, Update (first 3 frames only), OnDisable, OnDestroy
+}</code></pre>
+
+                    <details>
+                        <summary>💡 Hint</summary>
+                        <p>Keep a frame counter field and only log inside <code>Update</code> while it's below 3, so you can read the sequence. On stopping Play mode, Unity disables then destroys everything — so you'll see <code>OnDisable</code> before <code>OnDestroy</code> at the end.</p>
+                    </details>
+
+                    <details>
+                        <summary>✅ Solution</summary>
+                        <pre><code class="language-csharp">using UnityEngine;
+
+public class LifecycleLogger : MonoBehaviour
+{
+    private int frame;
+
+    void Awake()     { Debug.Log("1. Awake"); }
+    void OnEnable()  { Debug.Log("2. OnEnable"); }
+    void Start()     { Debug.Log("3. Start"); }
+
+    void Update()
+    {
+        if (frame &lt; 3)
+        {
+            Debug.Log($"4. Update (frame {frame})");
+            frame++;
+        }
+    }
+
+    void OnDisable() { Debug.Log("5. OnDisable"); }
+    void OnDestroy() { Debug.Log("6. OnDestroy"); }
+}</code></pre>
+                        <p><strong>Expected order on Play then Stop:</strong> Awake → OnEnable → Start → Update(0) → Update(1) → Update(2) → … → (on stop) OnDisable → OnDestroy. Toggling the checkbox off fires <code>OnDisable</code>; toggling it back on fires <code>OnEnable</code> again — but <em>not</em> <code>Awake</code> or <code>Start</code>, which only ever run once.</p>
+                    </details>
+                </div>
+
+                <!-- Quiz Section -->
+                <div class="card quiz-container">
+                    <h3>🎯 Quick Quiz</h3>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 1:</strong> You need to look up another GameObject that must already be initialized. Where should that lookup go?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="Awake runs before other objects may be ready — good for setting up YOURSELF, not for cross-object lookups.">
+                                A) In <code>Awake</code>, because it runs first.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! All Awake calls run before any Start, so by Start every other object is initialized and safe to reference.">
+                                B) In <code>Start</code>, because all <code>Awake</code> calls have already run by then.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="Update runs every frame — you'd be repeating a one-time lookup wastefully.">
+                                C) In <code>Update</code>, so it retries every frame.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 2:</strong> Where should you apply a force to a <code>Rigidbody</code>?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="Update runs at a variable rate; physics wants a fixed timestep.">
+                                A) In <code>Update</code>.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! Physics runs on a fixed timestep, so Rigidbody forces belong in FixedUpdate.">
+                                B) In <code>FixedUpdate</code>.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="LateUpdate is for after-movement work like camera follow, not physics.">
+                                C) In <code>LateUpdate</code>.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 3:</strong> Your <code>Update</code> method never runs and there's no compile error. What's the most likely cause?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="A disabled script is possible, but there's a far more common silent cause.">
+                                A) The Rigidbody is missing.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! Unity matches event functions by exact name and signature. A typo or wrong case (like 'update' or 'Updte') compiles fine but is never called.">
+                                B) The method name is misspelled or mis-cased, so Unity's name-based lookup never matches it.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="You don't override event functions — that's not how Unity calls them.">
+                                C) You forgot the <code>override</code> keyword.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section 8: Summary -->
+            <section id="summary" class="lesson-section">
+                <h2>Summary</h2>
+
+                <div class="card card-success">
+                    <h3>🎉 Key Takeaways</h3>
+                    <ul>
+                        <li>Unity calls <strong>event functions</strong> at defined moments: <code>Awake</code> → <code>OnEnable</code> → <code>Start</code> (birth), <code>FixedUpdate</code>/<code>Update</code>/<code>LateUpdate</code> (loop), <code>OnDisable</code> → <code>OnDestroy</code> (death).</li>
+                        <li>Two-phase startup: <strong>all</strong> <code>Awake</code>s run before <strong>any</strong> <code>Start</code>. Set up yourself in <code>Awake</code>, reference others in <code>Start</code>.</li>
+                        <li><code>Update</code> = per frame (use <code>Time.deltaTime</code>); <code>FixedUpdate</code> = physics on a fixed step (Rigidbody forces); <code>LateUpdate</code> = after all Updates (camera follow).</li>
+                        <li>Subscribe in <code>OnEnable</code>, unsubscribe in <code>OnDisable</code> — mirror images so nothing leaks.</li>
+                        <li>Event functions are matched by <strong>name and signature</strong>, not <code>override</code>/interfaces — so a typo silently does nothing, and unused event functions still cost a little.</li>
+                        <li>Order is guaranteed <em>within</em> a component, <strong>not across</strong> different GameObjects.</li>
+                    </ul>
+                </div>
+
+                <h3>📚 Additional Resources</h3>
+                <ul>
+                    <li><a href="https://docs.unity3d.com/Manual/execution-order.html" target="_blank" rel="noopener">Unity Manual — Event function execution order</a></li>
+                    <li><a href="https://docs.unity3d.com/ScriptReference/MonoBehaviour.html" target="_blank" rel="noopener">Scripting Reference — MonoBehaviour messages (Awake, Start, Update…)</a></li>
+                    <li><a href="https://docs.unity3d.com/ScriptReference/Time-deltaTime.html" target="_blank" rel="noopener">Scripting Reference — Time.deltaTime</a></li>
+                </ul>
+
+                <h3>🚀 What's Next?</h3>
+                <p>You can now write components that come alive at the right moments. But real behavior needs objects to <em>find and talk to each other</em>. In Lesson 1.3 we cover accessing GameObjects and components: <code>GetComponent</code>, references, and the <code>[SerializeField]</code> attribute for wiring things up in the Inspector.</p>
+
+                <!-- Encouragement Card -->
+                <div class="card card-accent" style="text-align: center; padding: 2rem;">
+                    <h3>🎉 You've mastered the game loop!</h3>
+                    <p>Knowing exactly when your code runs is what separates "it works by luck" from "it works by design." Great progress.</p>
+                </div>
+            </section>
+
+            <!-- Lesson Navigation -->
+            <nav class="lesson-nav" aria-label="Lesson Navigation">
+                <a href="lesson_01.html" class="prev-lesson">← Previous: Lesson 1.1 — MonoBehaviour and the Component Model</a>
+                <a href="index.html" class="home-link">🏠 Course Home</a>
+                <a href="lesson_03.html" class="next-lesson">Next: Lesson 1.3 — Accessing GameObjects and Components →</a>
+            </nav>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+        <p>&copy; 2026 Ray de la Paz. All rights reserved.</p>
+        <div class="footer-links">
+            <a href="https://rays-home.netlify.app/">Ray's House of Fun</a>
+            <a href="https://rays-home.netlify.app/contact">Contact</a>
+            <a href="#" id="print-button">Print Page</a>
+        </div>
+        <p><small>Press <kbd>?</kbd> for keyboard shortcuts</small></p>
+    </footer>
+
+    <!-- JavaScript -->
+    <script src="js/clipboard.js"></script>
+    <script src="js/course-enhancements.js"></script>
+</body>
+</html>

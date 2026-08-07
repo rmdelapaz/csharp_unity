@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Script Unity UI — uGUI Canvas, TextMeshPro, Buttons and Sliders, connecting UI to game events and managers, plus an intro to UI Toolkit.">
+    <meta name="author" content="Ray de la Paz">
+    <title>Lesson 4.2: UI Scripting - C# Scripting in Unity</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="icon" type="image/png" href="favicon.png">
+    <!-- Mermaid — initialized by course-enhancements.js for theme awareness -->
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        window.__mermaid = mermaid;
+        // Initial config — JS will re-init on theme change
+        const isDark = localStorage.getItem('theme') === 'dark' ||
+            (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: isDark ? 'dark' : 'default',
+            themeVariables: isDark
+                ? { primaryColor: '#334155', primaryTextColor: '#e2e8f0', primaryBorderColor: '#6366f1', lineColor: '#94a3b8', secondaryColor: '#1e293b', tertiaryColor: '#0f172a' }
+                : { primaryColor: '#eff6ff', primaryTextColor: '#1e293b', primaryBorderColor: '#3b82f6', lineColor: '#64748b', secondaryColor: '#f8fafc', tertiaryColor: '#f1f5f9' }
+        });
+    </script>
+</head>
+<body>
+    <!-- Skip to main content for accessibility -->
+    <a href="#main-content" class="skip-to-main">Skip to main content</a>
+
+
+    <!-- Navigation -->
+    <nav class="main-nav">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo">C# Scripting in Unity</a>
+            <button id="mobile-menu-toggle" class="mobile-menu-toggle" aria-expanded="false" aria-controls="nav-links">
+                ☰
+            </button>
+            <div class="nav-links" id="nav-links">
+                <a href="index.html">Home</a>
+                <a href="index.html#modules">All Modules</a>
+                <span class="nav-divider"></span>
+                <a href="https://rays-home.netlify.app/">Ray's House of Fun</a>
+                <a href="https://rays-home.netlify.app/contact">Contact</a>
+                <button id="theme-toggle" aria-label="Toggle dark/light mode">🌙</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Breadcrumb -->
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+        <ul>
+            <li><a href="index.html">Home</a></li>
+            <li><a href="index.html#modules">Module 4</a></li>
+            <li aria-current="page">Lesson 4.2: UI Scripting</li>
+        </ul>
+    </nav>
+
+    <!-- Main Content -->
+    <main id="main-content">
+        <div class="container">
+            <!-- Lesson Header -->
+            <header>
+                <h1>📝 Lesson 4.2: UI Scripting</h1>
+                <p class="lead">Your <code>GameManager</code> knows the score and state — now the player needs to <em>see</em> it. This lesson connects game logic to on-screen UI: displaying values with <strong>TextMeshPro</strong>, reacting to <strong>Buttons</strong> and <strong>Sliders</strong>, driving a health bar, and — crucially — updating UI from <strong>events</strong> rather than polling every frame.</p>
+
+                <!-- Learning objectives -->
+                <div class="card card-info">
+                    <h2>🎯 Learning Objectives</h2>
+                    <p>By the end of this lesson, you will be able to:</p>
+                    <ul>
+                        <li>Describe Unity's two UI systems — <strong>uGUI</strong> and <strong>UI Toolkit</strong> — and when to use each</li>
+                        <li>Reference and update UI components (<code>TMP_Text</code>, <code>Image</code>, <code>Slider</code>) from a script</li>
+                        <li>Handle <code>Button.onClick</code> and other UI callbacks (UnityEvents, Lesson 3.2)</li>
+                        <li>Drive UI from <strong>game events</strong> instead of polling in <code>Update</code></li>
+                        <li>Build a score label, a health bar, and a pause menu wired to the <code>GameManager</code></li>
+                        <li>Recognize the basics of UI Toolkit (<code>UIDocument</code>, <code>VisualElement</code>, queries)</li>
+                    </ul>
+                    <p><strong>Estimated Time:</strong> 60 minutes</p>
+                    <p><strong>Project:</strong> A HUD (score + health bar) and a pause menu that react to the <code>GameManager</code> from Lesson 4.1.</p>
+                </div>
+            </header>
+
+            <!-- Sticky Table of Contents -->
+            <details class="card toc-card" open>
+                <summary aria-label="Toggle table of contents">
+                    <span class="toc-icon" aria-hidden="true">📑</span>
+                    <span class="toc-label">In This Lesson</span>
+                    <span class="toc-chevron" aria-hidden="true">▾</span>
+                </summary>
+                <nav aria-label="Table of Contents">
+                    <ol>
+                        <li><a href="#introduction" class="toc-link">Two UI Systems</a></li>
+                        <li><a href="#ugui" class="toc-link">uGUI Building Blocks</a></li>
+                        <li><a href="#text" class="toc-link">Updating Text &amp; Images</a></li>
+                        <li><a href="#buttons" class="toc-link">Buttons and Sliders</a></li>
+                        <li><a href="#eventdriven" class="toc-link">Event-Driven UI</a></li>
+                        <li><a href="#toolkit" class="toc-link">A Look at UI Toolkit</a></li>
+                        <li><a href="#exercise" class="toc-link">Exercise &amp; Quiz</a></li>
+                        <li><a href="#summary" class="toc-link">Summary</a></li>
+                    </ol>
+                </nav>
+            </details>
+
+            <!-- Section 1: Two UI systems -->
+            <section id="introduction" class="lesson-section">
+                <h2>Two UI Systems</h2>
+                <p>Unity has <em>two</em> built-in UI systems. Knowing which you're using avoids a lot of confusion:</p>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th></th><th>uGUI (Unity UI)</th><th>UI Toolkit</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Built from</td><td>GameObjects on a <code>Canvas</code>, with components</td><td>UXML markup + USS stylesheets (web-like)</td></tr>
+                            <tr><td>Scripted with</td><td><code>UnityEngine.UI</code> + <code>TMPro</code></td><td><code>UnityEngine.UIElements</code></td></tr>
+                            <tr><td>Feels like</td><td>Placing objects in the scene</td><td>Building a web page</td></tr>
+                            <tr><td>Best for</td><td>World-space UI, most in-game HUDs, quick setup</td><td>Complex/large UIs, editor tools, data-heavy screens</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="card card-info">
+                    <h4>💡 Which does this lesson use?</h4>
+                    <p>We focus on <strong>uGUI</strong> — it's the most common for gameplay HUDs, works in world space, and its component-and-GameObject model maps directly onto everything you've learned (it's just more MonoBehaviours to reference). We finish with a tour of UI Toolkit so you recognize it. Both ship with Unity; pick per project.</p>
+                </div>
+
+                <p>In uGUI, all UI lives under a <strong>Canvas</strong>, and every UI element uses a <code>RectTransform</code> (a 2D-anchored cousin of the <code>Transform</code> from Lesson 1.1) for layout. From a scripting standpoint, though, UI elements are just components — you reference and drive them exactly like any other.</p>
+            </section>
+
+            <!-- Section 2: uGUI blocks -->
+            <section id="ugui" class="lesson-section">
+                <h2>uGUI Building Blocks</h2>
+                <p>The components you'll script most often:</p>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>Component</th><th>Role</th><th>Namespace</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td><code>TMP_Text</code> / <code>TextMeshProUGUI</code></td><td>Crisp text labels (score, timers, dialogue)</td><td><code>TMPro</code></td></tr>
+                            <tr><td><code>Image</code></td><td>Sprites, icons, bars (supports "fill" for progress)</td><td><code>UnityEngine.UI</code></td></tr>
+                            <tr><td><code>Button</code></td><td>Clickable button with an <code>onClick</code> UnityEvent</td><td><code>UnityEngine.UI</code></td></tr>
+                            <tr><td><code>Slider</code></td><td>A 0–1 value with a handle (volume, health)</td><td><code>UnityEngine.UI</code></td></tr>
+                            <tr><td><code>TMP_InputField</code></td><td>Text entry (name, chat)</td><td><code>TMPro</code></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="card card-success">
+                    <h4>✅ Use TextMeshPro, not legacy Text</h4>
+                    <p>Unity's old <code>Text</code> component (<code>UnityEngine.UI.Text</code>) is superseded by <strong>TextMeshPro</strong> (<code>TMPro</code>), which renders far sharper at any size and offers rich formatting. Create text via <em>UI → Text - TextMeshPro</em> and reference it as <code>TMP_Text</code>. Reach for legacy <code>Text</code> only in old projects.</p>
+                </div>
+
+                <blockquote>
+                    <strong>💡 To script a UI element you need a reference to it</strong> — the same wiring skill from Lesson 1.3. Expose a <code>[SerializeField]</code> field of the component's type and drag the UI object into it in the Inspector.
+                </blockquote>
+            </section>
+
+            <!-- Section 3: Text & images -->
+            <section id="text" class="lesson-section">
+                <h2>Updating Text &amp; Images</h2>
+                <p>Displaying a value is just: hold a reference to the label, and assign its <code>text</code> when the value changes.</p>
+
+                <pre><code class="language-csharp">using UnityEngine;
+using TMPro;   // for TMP_Text
+
+public class ScoreLabel : MonoBehaviour
+{
+    [SerializeField] private TMP_Text label;   // drag the TextMeshPro object here
+
+    public void Show(int score)
+    {
+        label.text = $"Score: {score}";   // update the on-screen text
+    }
+}</code></pre>
+
+                <p>An <code>Image</code> set to <em>Filled</em> mode is the simplest health/progress bar — its <code>fillAmount</code> (0–1) controls how much shows:</p>
+                <pre><code class="language-csharp">using UnityEngine;
+using UnityEngine.UI;   // for Image
+
+public class HealthBar : MonoBehaviour
+{
+    [SerializeField] private Image fill;   // an Image with Image Type = Filled
+
+    public void SetHealth(int current, int max)
+    {
+        fill.fillAmount = (float)current / max;   // e.g. 30/100 → 0.3 bar
+    }
+}</code></pre>
+
+                <div class="card card-warning">
+                    <h4>⚠️ Don't rebuild strings every frame</h4>
+                    <p>Assigning <code>label.text</code> allocates a new string, and building it in <code>Update</code> generates garbage 60 times a second (Lesson 5.1). Update UI text <strong>only when the value changes</strong>, not every frame — which is exactly what event-driven UI (two sections down) gives you for free. Watch integer division too: <code>current / max</code> with two ints truncates to 0 — cast to <code>float</code> first, as above.</p>
+                </div>
+            </section>
+
+            <!-- Section 4: Buttons & sliders -->
+            <section id="buttons" class="lesson-section">
+                <h2>Buttons and Sliders</h2>
+                <p>Input flows the other way here: the UI element tells <em>you</em> when the user interacts. A <code>Button</code>'s <code>onClick</code> is a <code>UnityEvent</code> (Lesson 3.2) — you can wire it in the Inspector <em>or</em> subscribe in code.</p>
+
+                <pre><code class="language-csharp">using UnityEngine;
+using UnityEngine.UI;
+
+public class PauseMenu : MonoBehaviour
+{
+    [SerializeField] private Button resumeButton;
+    [SerializeField] private Button quitButton;
+
+    void OnEnable()
+    {
+        // Subscribe in code (mirror the Lesson 1.2 / 3.2 pattern).
+        resumeButton.onClick.AddListener(OnResume);
+        quitButton.onClick.AddListener(OnQuit);
+    }
+
+    void OnDisable()
+    {
+        resumeButton.onClick.RemoveListener(OnResume);   // always clean up
+        quitButton.onClick.RemoveListener(OnQuit);
+    }
+
+    private void OnResume() =&gt; GameManager.Instance.SetState(GameState.Playing);
+    private void OnQuit()   =&gt; GameManager.Instance.SetState(GameState.MainMenu);
+}</code></pre>
+
+                <p>A <code>Slider</code> reports value changes through <code>onValueChanged</code> (also a UnityEvent), passing the new <code>float</code>:</p>
+                <pre><code class="language-csharp">[SerializeField] private Slider volumeSlider;
+
+void OnEnable()  =&gt; volumeSlider.onValueChanged.AddListener(SetVolume);
+void OnDisable() =&gt; volumeSlider.onValueChanged.RemoveListener(SetVolume);
+
+private void SetVolume(float value) =&gt; AudioListener.volume = value;   // 0..1</code></pre>
+
+                <div class="card card-info">
+                    <h4>💡 Inspector wiring vs code — same trade-off as Lesson 3.2</h4>
+                    <p>You can also assign a Button's action in its <em>On Click ()</em> list in the Inspector — no code — which is great for designers and simple hooks. Wire in <strong>code</strong> (as above) when the target is created at runtime or when you want the wiring visible in source and version control. Both use the same underlying UnityEvent.</p>
+                </div>
+            </section>
+
+            <!-- Section 5: Event-driven UI -->
+            <section id="eventdriven" class="lesson-section">
+                <h2>Event-Driven UI</h2>
+                <p>Here's where Modules 3 and 4 pay off together. A naive HUD polls the manager every frame:</p>
+                <pre><code class="language-csharp">// ❌ Wasteful: rebuilds the string 60x/second even when the score never changes.
+void Update()
+{
+    scoreLabel.text = $"Score: {GameManager.Instance.Score}";
+}</code></pre>
+
+                <p>Better: the <code>GameManager</code> already <em>raises events</em> when things change (Lesson 4.1). The UI just <strong>subscribes</strong> and updates only on change — no <code>Update</code>, no waste, no coupling from the manager's side.</p>
+
+                <pre><code class="language-csharp">using UnityEngine;
+using TMPro;
+
+public class HUD : MonoBehaviour
+{
+    [SerializeField] private TMP_Text scoreLabel;
+    [SerializeField] private HealthBar healthBar;
+
+    void OnEnable()
+    {
+        // React to the manager's announcements (Lesson 3.2 subscribe pattern).
+        GameManager.Instance.ScoreChanged += UpdateScore;
+    }
+
+    void OnDisable()
+    {
+        GameManager.Instance.ScoreChanged -= UpdateScore;
+    }
+
+    void Start()
+    {
+        UpdateScore(GameManager.Instance.Score);   // set the initial value once
+    }
+
+    private void UpdateScore(int score) =&gt; scoreLabel.text = $"Score: {score}";
+}</code></pre>
+
+                <div class="mermaid">
+                    graph LR
+                    G["GameManager<br/>AddScore()"] -->|"raises ScoreChanged"| EV["event"]
+                    EV -.->|"UpdateScore(score)"| HUD["HUD: set label.text"]
+                    style G fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                    style EV fill:#eff6ff,stroke:#3b82f6,stroke-width:2px
+                </div>
+
+                <div class="card card-success">
+                    <h4>✅ The professional pattern</h4>
+                    <p><strong>Game logic raises events; UI subscribes and updates on change.</strong> The manager doesn't know the UI exists (no coupling), the UI does zero per-frame work, and adding a second display (a mini-map score, an end screen) is just another subscriber. This is the same decoupling from Lesson 3.2, now wiring your game to its interface.</p>
+                </div>
+
+                <blockquote>
+                    <strong>💡 Don't forget the initial value:</strong> events fire on <em>change</em>, so a fresh UI shows nothing until the first change. Call the update method once in <code>Start</code> (as above) to seed the current value.
+                </blockquote>
+            </section>
+
+            <!-- Section 6: UI Toolkit -->
+            <section id="toolkit" class="lesson-section">
+                <h2>A Look at UI Toolkit</h2>
+                <p><strong>UI Toolkit</strong> is Unity's newer, web-inspired UI system. Instead of GameObjects, you define structure in <strong>UXML</strong> (like HTML) and style it in <strong>USS</strong> (like CSS), then drive it from C# via the <code>UnityEngine.UIElements</code> API. A <code>UIDocument</code> component renders it in a scene.</p>
+
+                <pre><code class="language-csharp">using UnityEngine;
+using UnityEngine.UIElements;   // UI Toolkit API
+
+public class MenuController : MonoBehaviour
+{
+    [SerializeField] private UIDocument document;   // holds the UXML tree
+
+    void OnEnable()
+    {
+        VisualElement root = document.rootVisualElement;
+
+        // Query elements by name (#id) or type — like CSS selectors / querySelector.
+        Button playButton = root.Q&lt;Button&gt;("play-button");
+        Label scoreLabel  = root.Q&lt;Label&gt;("score");
+
+        playButton.clicked += OnPlay;          // UI Toolkit uses C# events, not UnityEvents
+        scoreLabel.text = "Score: 0";
+    }
+
+    private void OnPlay() =&gt; Debug.Log("Play!");
+}</code></pre>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>Concept</th><th>uGUI</th><th>UI Toolkit</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>An element is a…</td><td>GameObject + component</td><td><code>VisualElement</code> in a tree</td></tr>
+                            <tr><td>You find it with…</td><td><code>[SerializeField]</code> reference</td><td><code>root.Q&lt;T&gt;("name")</code> query</td></tr>
+                            <tr><td>Button click is…</td><td><code>onClick</code> (UnityEvent)</td><td><code>clicked</code> (C# event)</td></tr>
+                            <tr><td>Styling</td><td>Per-component in Inspector</td><td>USS stylesheets</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="card card-info">
+                    <h4>💡 Which to choose?</h4>
+                    <p>For most <em>in-game</em> HUDs and world-space UI, <strong>uGUI</strong> is simpler and well-supported. For <strong>large, complex, or data-driven</strong> interfaces — and for custom <em>Editor</em> tools — <strong>UI Toolkit</strong> scales better and its CSS-like styling is powerful. The core skills transfer: reference an element, react to its events, update it on change. That pattern is identical in both.</p>
+                </div>
+            </section>
+
+            <!-- Section 7: Exercise & Quiz -->
+            <section id="exercise" class="lesson-section">
+                <h2>Exercise &amp; Quiz</h2>
+
+                <div class="card card-info">
+                    <h3>🏋️ Exercise: Wire a HUD to the GameManager</h3>
+                    <p><strong>Objective:</strong> Build an event-driven score label and a health bar, plus a working pause button — all reacting to the <code>GameManager</code> from Lesson 4.1.</p>
+
+                    <h4>Instructions:</h4>
+                    <ol>
+                        <li>Add a <strong>Canvas</strong>. Add a <em>Text - TextMeshPro</em> for the score and an <code>Image</code> (Image Type = Filled) for the health bar.</li>
+                        <li>Write a <code>HUD</code> script that subscribes to <code>GameManager.Instance.ScoreChanged</code> in <code>OnEnable</code>, unsubscribes in <code>OnDisable</code>, and updates the label — plus seeds the value in <code>Start</code>.</li>
+                        <li>Add a <code>Button</code> whose <code>onClick</code> calls <code>GameManager.Instance.SetState(GameState.Paused)</code> — wire it in code or the Inspector.</li>
+                        <li>Add a <code>SetHealth(current, max)</code> path that sets the fill Image's <code>fillAmount</code> (cast to <code>float</code>!).</li>
+                        <li>Play: gaining score updates the label only when it changes, and the pause button freezes the game (<code>Time.timeScale = 0</code> from Lesson 4.1).</li>
+                    </ol>
+
+                    <h4>Starter Code:</h4>
+                    <pre><code class="language-csharp">using UnityEngine;
+using TMPro;
+
+public class HUD : MonoBehaviour
+{
+    [SerializeField] private TMP_Text scoreLabel;
+
+    void OnEnable()
+    {
+        // TODO: subscribe to GameManager.Instance.ScoreChanged.
+    }
+
+    void OnDisable()
+    {
+        // TODO: unsubscribe.
+    }
+
+    // TODO: UpdateScore(int) that sets scoreLabel.text; call it once in Start.
+}</code></pre>
+
+                    <details>
+                        <summary>💡 Hint</summary>
+                        <p><code>GameManager.Instance.ScoreChanged += UpdateScore;</code> in <code>OnEnable</code>, <code>-=</code> in <code>OnDisable</code>. <code>UpdateScore(int score) =&gt; scoreLabel.text = $"Score: {score}";</code>. In <code>Start</code>, call <code>UpdateScore(GameManager.Instance.Score)</code> so the label shows the current value immediately. For the bar, <code>fill.fillAmount = (float)current / max;</code>.</p>
+                    </details>
+
+                    <details>
+                        <summary>✅ Solution</summary>
+                        <pre><code class="language-csharp">using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
+
+public class HUD : MonoBehaviour
+{
+    [SerializeField] private TMP_Text scoreLabel;
+    [SerializeField] private Image healthFill;
+    [SerializeField] private Button pauseButton;
+
+    void OnEnable()
+    {
+        GameManager.Instance.ScoreChanged += UpdateScore;
+        pauseButton.onClick.AddListener(Pause);
+    }
+
+    void OnDisable()
+    {
+        GameManager.Instance.ScoreChanged -= UpdateScore;
+        pauseButton.onClick.RemoveListener(Pause);
+    }
+
+    void Start()
+    {
+        UpdateScore(GameManager.Instance.Score);   // seed initial value
+    }
+
+    private void UpdateScore(int score) =&gt; scoreLabel.text = $"Score: {score}";
+
+    public void SetHealth(int current, int max) =&gt;
+        healthFill.fillAmount = (float)current / max;
+
+    private void Pause() =&gt; GameManager.Instance.SetState(GameState.Paused);
+}</code></pre>
+                        <p>The HUD reacts to the manager's events (no polling, no per-frame cost) and commands it back through <code>Instance</code> on a button press — exactly the "broadcast out, command in" balance from Lesson 4.1, now bridging logic and interface.</p>
+                    </details>
+                </div>
+
+                <!-- Quiz Section -->
+                <div class="card quiz-container">
+                    <h3>🎯 Quick Quiz</h3>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 1:</strong> Why is updating a score label from a game <em>event</em> better than doing it in <code>Update</code>?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="Both can show the right value — the difference is cost and coupling.">
+                                A) <code>Update</code> can't access UI components.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! Event-driven updates run only when the value changes — no per-frame string allocation — and keep the manager decoupled from the UI.">
+                                B) The event updates only when the value changes, avoiding per-frame string allocations and keeping systems decoupled.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="Events aren't inherently 'more accurate' — the value is the same.">
+                                C) Events produce more accurate numbers than <code>Update</code>.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 2:</strong> A <code>Button</code>'s <code>onClick</code> is what kind of thing, familiar from Lesson 3.2?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="It's not a coroutine — it's an event you add listeners to.">
+                                A) A coroutine.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! onClick is a UnityEvent — you AddListener in code or wire it in the Inspector, just like any UnityEvent.">
+                                B) A <code>UnityEvent</code> — you <code>AddListener</code> in code or wire it in the Inspector.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="It's not a ScriptableObject; it's a serialized event on the Button.">
+                                C) A ScriptableObject.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 3:</strong> Your health bar always shows empty. The code is <code>fill.fillAmount = current / max;</code> with <code>int</code> values. What's wrong?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! Integer division truncates (e.g. 30/100 = 0). Cast to float: (float)current / max.">
+                                A) Integer division truncates to 0 — cast to <code>float</code> first: <code>(float)current / max</code>.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="fillAmount is the right property for a Filled Image.">
+                                B) <code>fillAmount</code> isn't a real property.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="TextMeshPro is about text, not image fill.">
+                                C) You must use TextMeshPro for bars.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section 8: Summary -->
+            <section id="summary" class="lesson-section">
+                <h2>Summary</h2>
+
+                <div class="card card-success">
+                    <h3>🎉 Key Takeaways</h3>
+                    <ul>
+                        <li>Unity has two UI systems: <strong>uGUI</strong> (Canvas + GameObjects, great for HUDs) and <strong>UI Toolkit</strong> (UXML/USS, great for complex/editor UI).</li>
+                        <li>Script UI by referencing components with <code>[SerializeField]</code> and assigning their properties — <code>TMP_Text.text</code>, <code>Image.fillAmount</code>, etc. Prefer <strong>TextMeshPro</strong> over legacy <code>Text</code>.</li>
+                        <li>UI input comes back via UnityEvents: <code>Button.onClick</code>, <code>Slider.onValueChanged</code> — <code>AddListener</code>/<code>RemoveListener</code> (mirror in <code>OnEnable</code>/<code>OnDisable</code>) or wire in the Inspector.</li>
+                        <li><strong>Drive UI from game events, not <code>Update</code></strong>: subscribe to manager events (Lesson 3.2 / 4.1) and update only on change — no per-frame allocations, no coupling. Seed the initial value in <code>Start</code>.</li>
+                        <li>Watch <strong>integer division</strong> for fill amounts — cast to <code>float</code>.</li>
+                        <li>UI Toolkit mirrors the same skills: query an element (<code>root.Q&lt;T&gt;</code>), react to its C# events, update on change.</li>
+                    </ul>
+                </div>
+
+                <h3>📚 Additional Resources</h3>
+                <ul>
+                    <li><a href="https://docs.unity3d.com/Packages/com.unity.ugui@2.0/manual/index.html" target="_blank" rel="noopener">Manual — Unity UI (uGUI)</a></li>
+                    <li><a href="https://docs.unity3d.com/Manual/com.unity.ugui.html" target="_blank" rel="noopener">Manual — TextMeshPro</a></li>
+                    <li><a href="https://docs.unity3d.com/Manual/UIElements.html" target="_blank" rel="noopener">Manual — UI Toolkit</a></li>
+                    <li><a href="https://docs.unity3d.com/ScriptReference/UI.Button.html" target="_blank" rel="noopener">Scripting Reference — Button</a></li>
+                </ul>
+
+                <h3>🚀 What's Next?</h3>
+                <p>Your game shows its state and takes UI input. The last piece of a complete loop is <em>persistence</em>: Lesson 4.3, <em>Saving and Loading</em>, covers writing game state to disk with JSON serialization and <code>PlayerPrefs</code>, so progress survives between sessions.</p>
+
+                <!-- Encouragement Card -->
+                <div class="card card-accent" style="text-align: center; padding: 2rem;">
+                    <h3>🎉 Your game has a face!</h3>
+                    <p>Score, health, menus — the player can finally see and steer the systems you built. Logic and interface, cleanly connected by events.</p>
+                </div>
+            </section>
+
+            <!-- Lesson Navigation -->
+            <nav class="lesson-nav" aria-label="Lesson Navigation">
+                <a href="lesson_10.html" class="prev-lesson">← Previous: Lesson 4.1 — Game State and Managers</a>
+                <a href="index.html" class="home-link">🏠 Course Home</a>
+                <a href="lesson_12.html" class="next-lesson">Next: Lesson 4.3 — Saving and Loading →</a>
+            </nav>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+        <p>&copy; 2026 Ray de la Paz. All rights reserved.</p>
+        <div class="footer-links">
+            <a href="https://rays-home.netlify.app/">Ray's House of Fun</a>
+            <a href="https://rays-home.netlify.app/contact">Contact</a>
+            <a href="#" id="print-button">Print Page</a>
+        </div>
+        <p><small>Press <kbd>?</kbd> for keyboard shortcuts</small></p>
+    </footer>
+
+    <!-- JavaScript -->
+    <script src="js/clipboard.js"></script>
+    <script src="js/course-enhancements.js"></script>
+</body>
+</html>

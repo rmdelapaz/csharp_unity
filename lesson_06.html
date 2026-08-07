@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Spawn and remove objects at runtime in Unity — prefabs, Instantiate and its overloads, Destroy (immediate and delayed), and the lifecycle of runtime-created objects.">
+    <meta name="author" content="Ray de la Paz">
+    <title>Lesson 2.3: Instantiating and Destroying Objects - C# Scripting in Unity</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="icon" type="image/png" href="favicon.png">
+    <!-- Mermaid — initialized by course-enhancements.js for theme awareness -->
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        window.__mermaid = mermaid;
+        // Initial config — JS will re-init on theme change
+        const isDark = localStorage.getItem('theme') === 'dark' ||
+            (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: isDark ? 'dark' : 'default',
+            themeVariables: isDark
+                ? { primaryColor: '#334155', primaryTextColor: '#e2e8f0', primaryBorderColor: '#6366f1', lineColor: '#94a3b8', secondaryColor: '#1e293b', tertiaryColor: '#0f172a' }
+                : { primaryColor: '#eff6ff', primaryTextColor: '#1e293b', primaryBorderColor: '#3b82f6', lineColor: '#64748b', secondaryColor: '#f8fafc', tertiaryColor: '#f1f5f9' }
+        });
+    </script>
+</head>
+<body>
+    <!-- Skip to main content for accessibility -->
+    <a href="#main-content" class="skip-to-main">Skip to main content</a>
+
+
+    <!-- Navigation -->
+    <nav class="main-nav">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo">C# Scripting in Unity</a>
+            <button id="mobile-menu-toggle" class="mobile-menu-toggle" aria-expanded="false" aria-controls="nav-links">
+                ☰
+            </button>
+            <div class="nav-links" id="nav-links">
+                <a href="index.html">Home</a>
+                <a href="index.html#modules">All Modules</a>
+                <span class="nav-divider"></span>
+                <a href="https://rays-home.netlify.app/">Ray's House of Fun</a>
+                <a href="https://rays-home.netlify.app/contact">Contact</a>
+                <button id="theme-toggle" aria-label="Toggle dark/light mode">🌙</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Breadcrumb -->
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+        <ul>
+            <li><a href="index.html">Home</a></li>
+            <li><a href="index.html#modules">Module 2</a></li>
+            <li aria-current="page">Lesson 2.3: Instantiating and Destroying Objects</li>
+        </ul>
+    </nav>
+
+    <!-- Main Content -->
+    <main id="main-content">
+        <div class="container">
+            <!-- Lesson Header -->
+            <header>
+                <h1>📝 Lesson 2.3: Instantiating and Destroying Objects</h1>
+                <p class="lead">So far every object existed before you pressed Play. Real games <em>create</em> objects on the fly — bullets, enemies, particles, loot — and remove them when they're done. This lesson covers <strong>prefabs</strong>, <code>Instantiate</code> to spawn them, and <code>Destroy</code> to clean them up.</p>
+
+                <!-- Learning objectives -->
+                <div class="card card-info">
+                    <h2>🎯 Learning Objectives</h2>
+                    <p>By the end of this lesson, you will be able to:</p>
+                    <ul>
+                        <li>Explain what a <strong>prefab</strong> is and why it's the template for runtime spawning</li>
+                        <li>Spawn objects with <code>Instantiate</code>, including position, rotation, and parent overloads</li>
+                        <li>Use the generic <code>Instantiate&lt;T&gt;()</code> to get a typed component back without casting</li>
+                        <li>Remove objects with <code>Destroy</code>, and delay destruction with the timed overload</li>
+                        <li>Configure a freshly spawned object (e.g. give a bullet its velocity)</li>
+                        <li>Recognize why constant spawning/destroying motivates <em>object pooling</em> (Lesson 5.1)</li>
+                    </ul>
+                    <p><strong>Estimated Time:</strong> 60 minutes</p>
+                    <p><strong>Project:</strong> A spawner that fires bullet prefabs on a key press, each self-destructing after a few seconds.</p>
+                </div>
+            </header>
+
+            <!-- Sticky Table of Contents -->
+            <details class="card toc-card" open>
+                <summary aria-label="Toggle table of contents">
+                    <span class="toc-icon" aria-hidden="true">📑</span>
+                    <span class="toc-label">In This Lesson</span>
+                    <span class="toc-chevron" aria-hidden="true">▾</span>
+                </summary>
+                <nav aria-label="Table of Contents">
+                    <ol>
+                        <li><a href="#introduction" class="toc-link">Prefabs: Reusable Templates</a></li>
+                        <li><a href="#instantiate" class="toc-link">Instantiate</a></li>
+                        <li><a href="#configure" class="toc-link">Configuring a Spawned Object</a></li>
+                        <li><a href="#destroy" class="toc-link">Destroy</a></li>
+                        <li><a href="#lifecycle" class="toc-link">The Spawn/Destroy Lifecycle</a></li>
+                        <li><a href="#pooling" class="toc-link">Why Pooling Exists</a></li>
+                        <li><a href="#exercise" class="toc-link">Exercise &amp; Quiz</a></li>
+                        <li><a href="#summary" class="toc-link">Summary</a></li>
+                    </ol>
+                </nav>
+            </details>
+
+            <!-- Section 1: Prefabs -->
+            <section id="introduction" class="lesson-section">
+                <h2>Prefabs: Reusable Templates</h2>
+                <p>You can't spawn a GameObject from nothing at runtime — you spawn <em>copies</em> of a template. That template is a <strong>prefab</strong>.</p>
+
+                <div class="card card-accent">
+                    <h4>📖 Definition</h4>
+                    <p>A <strong>prefab</strong> is a saved GameObject — with all its components, values, and children — stored as an asset in your project. Think of it as a <em>blueprint</em> or a class: you author it once, then stamp out as many <em>instances</em> as you like. Editing the prefab asset updates every instance.</p>
+                </div>
+
+                <p>You make one by dragging a configured GameObject from the Hierarchy into the Project window; it turns blue and becomes a reusable asset. The analogy to C# is exact:</p>
+
+                <div class="mermaid">
+                    graph LR
+                    P["Bullet prefab (asset)<br/>the 'class' / blueprint"] -->|"Instantiate()"| I1["Bullet instance #1"]
+                    P -->|"Instantiate()"| I2["Bullet instance #2"]
+                    P -->|"Instantiate()"| I3["Bullet instance #3"]
+                    style P fill:#eff6ff,stroke:#3b82f6,stroke-width:2px
+                    style I1 fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                    style I2 fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                    style I3 fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                </div>
+
+                <blockquote>
+                    <strong>💡 Prefab ≈ class, instance ≈ object.</strong> Just as <code>new Enemy()</code> creates an object from a class, <code>Instantiate(enemyPrefab)</code> creates a GameObject from a prefab. The difference: a prefab also carries all the scene data (meshes, components, tuned Inspector values) a plain class can't.
+                </blockquote>
+
+                <p>To spawn a prefab from a script, the script needs a <em>reference</em> to it — which is exactly the Inspector-wiring skill from Lesson 1.3: a <code>[SerializeField]</code> field you drag the prefab into.</p>
+            </section>
+
+            <!-- Section 2: Instantiate -->
+            <section id="instantiate" class="lesson-section">
+                <h2>Instantiate</h2>
+                <p><code>Instantiate</code> creates a copy of a prefab (or any object) in the scene. It has many overloads; these are the ones you'll use daily:</p>
+
+                <pre><code class="language-csharp">// 1) Copy at the prefab's own default position/rotation:
+Instantiate(bulletPrefab);
+
+// 2) Copy at a specific position and rotation (the most common form):
+Instantiate(bulletPrefab, spawnPoint.position, spawnPoint.rotation);
+
+// 3) Copy and immediately parent it under another Transform:
+Instantiate(bulletPrefab, spawnPoint.position, spawnPoint.rotation, container);</code></pre>
+
+                <div class="card card-accent">
+                    <h4>📖 Definition: Quaternion</h4>
+                    <p>Rotations in Unity are <code>Quaternion</code>s, not plain angles. You rarely build one by hand — use <code>Quaternion.identity</code> ("no rotation"), copy another object's <code>transform.rotation</code>, or <code>Quaternion.Euler(x, y, z)</code> to convert from degrees. For a bullet, <code>spawnPoint.rotation</code> aims it the way the spawn point faces.</p>
+                </div>
+
+                <h3>The generic <code>Instantiate&lt;T&gt;()</code> — get a component directly</h3>
+                <p>Plain <code>Instantiate</code> returns the type you passed in. When you spawn a prefab typed as a <em>component</em>, the generic overload returns that component directly, so you can configure it without a <code>GetComponent</code> call:</p>
+
+                <pre><code class="language-csharp">// If bulletPrefab is declared as a Bullet, this returns a Bullet — no cast, no GetComponent:
+Bullet bullet = Instantiate(bulletPrefab, spawnPoint.position, spawnPoint.rotation);
+bullet.speed = 20f;   // configure the fresh instance right away</code></pre>
+
+                <div class="card card-success">
+                    <h4>✅ Tip: type your prefab field as the component you'll use</h4>
+                    <p>Declaring <code>[SerializeField] private Bullet bulletPrefab;</code> (instead of <code>GameObject</code>) still lets you drag the prefab in, and makes <code>Instantiate</code> hand you a <code>Bullet</code> ready to configure. Use <code>GameObject</code> only when you don't need a specific component off it.</p>
+                </div>
+
+                <blockquote>
+                    <strong>⚠️ Important:</strong> The value <code>Instantiate</code> returns is your handle to the new object. If you don't capture it (<code>var b = Instantiate(...)</code>), you can't easily configure or track that instance afterward. Grab the return value whenever you need to touch the spawned object.
+                </blockquote>
+            </section>
+
+            <!-- Section 3: Configuring -->
+            <section id="configure" class="lesson-section">
+                <h2>Configuring a Spawned Object</h2>
+                <p>A spawned object usually needs setup the prefab can't know in advance — a bullet's direction, an enemy's target, a pickup's value. You do that right after instantiating, using the returned reference. Here's a spawner that fires bullets forward:</p>
+
+                <pre><code class="language-csharp">using UnityEngine;
+
+public class Gun : MonoBehaviour
+{
+    [SerializeField] private Bullet bulletPrefab;   // drag the prefab here (Lesson 1.3)
+    [SerializeField] private Transform muzzle;      // where bullets appear
+    [SerializeField] private float bulletSpeed = 20f;
+
+    void Update()
+    {
+        // Fire on the frame the key goes down (Lesson 1.2 / 2.1).
+        if (Input.GetKeyDown(KeyCode.Space))
+            Fire();
+    }
+
+    void Fire()
+    {
+        // Spawn at the muzzle, facing the muzzle's direction.
+        Bullet bullet = Instantiate(bulletPrefab, muzzle.position, muzzle.rotation);
+
+        // Configure the new instance: push it forward.
+        bullet.Launch(muzzle.forward * bulletSpeed);
+    }
+}</code></pre>
+
+                <pre><code class="language-csharp">using UnityEngine;
+
+[RequireComponent(typeof(Rigidbody))]
+public class Bullet : MonoBehaviour
+{
+    private Rigidbody body;
+
+    void Awake() =&gt; body = GetComponent&lt;Rigidbody&gt;();
+
+    public void Launch(Vector3 velocity)
+    {
+        body.linearVelocity = velocity;   // Unity 6 name (Lesson 2.2)
+    }
+}</code></pre>
+
+                <div class="card card-info">
+                    <h4>💡 <code>transform.forward</code></h4>
+                    <p><code>muzzle.forward</code> is the muzzle's local +Z direction in world space — a unit <code>Vector3</code> pointing "the way it faces." Multiplying by a speed gives a velocity vector. This is how you fire in whatever direction the gun is aimed, without hardcoding an axis.</p>
+                </div>
+            </section>
+
+            <!-- Section 4: Destroy -->
+            <section id="destroy" class="lesson-section">
+                <h2>Destroy: Cleaning Up</h2>
+                <p>Every spawned object that isn't removed lives forever, piling up and eventually tanking performance. <code>Destroy</code> removes an object from the scene. You met it in Lesson 1.1; here are its important forms:</p>
+
+                <pre><code class="language-csharp">Destroy(gameObject);            // destroy the whole GameObject now (end of this frame)
+Destroy(gameObject, 3f);        // destroy it after 3 seconds — great for timed cleanup
+Destroy(this);                  // destroy just THIS component, leaving the GameObject
+Destroy(GetComponent&lt;Rigidbody&gt;());   // remove one specific component</code></pre>
+
+                <p>The timed overload is the idiomatic way to make short-lived objects clean up after themselves. A bullet that should vanish after 3 seconds does it in one line, in <code>Start</code>:</p>
+
+                <pre><code class="language-csharp">public class Bullet : MonoBehaviour
+{
+    [SerializeField] private float lifetime = 3f;
+
+    void Start()
+    {
+        Destroy(gameObject, lifetime);   // self-cleanup — no manual bookkeeping
+    }
+
+    void OnCollisionEnter(Collision collision)
+    {
+        // Or destroy on impact, whichever comes first.
+        Destroy(gameObject);
+    }
+}</code></pre>
+
+                <div class="card card-warning">
+                    <h4>⚠️ Destroy is deferred, and the reference goes "null"</h4>
+                    <p><code>Destroy</code> doesn't remove the object instantly — it happens after the current <code>Update</code> loop finishes, so the object still exists for the rest of this frame. Afterward, any reference to it compares equal to <code>null</code> via Unity's overloaded <code>==</code> (Lesson 1.3). Always guard with <code>if (obj != null)</code> before using a reference that might have been destroyed. (There's also <code>DestroyImmediate</code> — avoid it at runtime; it's for editor tools only.)</p>
+                </div>
+
+                <blockquote>
+                    <strong>💡 <code>gameObject</code> vs <code>this</code>:</strong> <code>Destroy(gameObject)</code> removes the entire object and everything on it; <code>Destroy(this)</code> removes only the script component. Ninety percent of the time you want <code>Destroy(gameObject)</code> — a common bug is destroying just the component and wondering why the object is still there.
+                </blockquote>
+            </section>
+
+            <!-- Section 5: Lifecycle -->
+            <section id="lifecycle" class="lesson-section">
+                <h2>The Spawn/Destroy Lifecycle</h2>
+                <p>A runtime-created object runs the <em>same</em> lifecycle you learned in Lesson 1.2 — it just begins mid-game instead of at scene load. When you <code>Instantiate</code>, Unity immediately runs the new object's <code>Awake</code> and <code>OnEnable</code>; its <code>Start</code> fires just before its first <code>Update</code>. When destroyed, <code>OnDisable</code> then <code>OnDestroy</code> run.</p>
+
+                <div class="mermaid">
+                    graph TD
+                    S["Instantiate(prefab)"] --> A["Awake() + OnEnable()<br/>run immediately"]
+                    A --> ST["Start()<br/>before first Update"]
+                    ST --> U["Update() / FixedUpdate()<br/>while it lives"]
+                    U --> D["Destroy(gameObject[, delay])"]
+                    D --> OD["OnDisable() ➜ OnDestroy()"]
+                    style S fill:#eff6ff,stroke:#3b82f6,stroke-width:2px
+                    style U fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                    style OD fill:#fdecea,stroke:#c0392b,stroke-width:2px
+                </div>
+
+                <p>This is why bullet setup goes in <code>Awake</code>/<code>Start</code> and cleanup (like unsubscribing) goes in <code>OnDestroy</code> — exactly the rules from Module 1, now applied to objects born at runtime. There's nothing new to learn about the lifecycle; spawning just triggers it on demand.</p>
+
+                <div class="card card-info">
+                    <h4>💡 Keep the Hierarchy tidy</h4>
+                    <p>Spawning many objects clutters the scene root. Passing a <em>parent</em> to <code>Instantiate</code> (overload 3) nests them under a container object — e.g. an empty "Bullets" object — so the Hierarchy stays readable and you can clear them all by destroying the container.</p>
+                </div>
+            </section>
+
+            <!-- Section 6: Pooling -->
+            <section id="pooling" class="lesson-section">
+                <h2>Why Pooling Exists</h2>
+                <p><code>Instantiate</code> and <code>Destroy</code> aren't free. Creating an object allocates memory and runs its <code>Awake</code>/<code>Start</code>; destroying it produces <em>garbage</em> that the C# garbage collector must later clean up. Do this a few times and no one notices. Do it hundreds of times per second — a bullet-hell shooter, a particle-heavy effect — and you get frame hitches from GC spikes.</p>
+
+                <div class="mermaid">
+                    graph LR
+                    subgraph Naive["❌ Spawn &amp; destroy constantly"]
+                        N1["Instantiate"] --> N2["use briefly"]
+                        N2 --> N3["Destroy ➜ garbage"]
+                        N3 --> N1
+                    end
+                    subgraph Pool["✅ Object pool (reuse)"]
+                        P1["Take inactive object<br/>from pool"] --> P2["use"]
+                        P2 --> P3["Deactivate &amp;<br/>return to pool"]
+                        P3 --> P1
+                    end
+                    style N3 fill:#fdecea,stroke:#c0392b,stroke-width:2px
+                    style P3 fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                </div>
+
+                <p>The fix is <strong>object pooling</strong>: instead of destroying an object, you <em>deactivate</em> it and stash it; next time you'd spawn, you reactivate one from the pool. No allocation, no garbage. It's the single most important optimization for spawn-heavy games.</p>
+
+                <div class="card card-success">
+                    <h4>✅ For now, spawn and destroy freely</h4>
+                    <p>Pooling is an <em>optimization</em> — premature pooling adds complexity you don't need while learning. Use <code>Instantiate</code>/<code>Destroy</code> until profiling shows a problem. We build a proper pool (and Unity's built-in <code>ObjectPool&lt;T&gt;</code>) in <strong>Lesson 5.1: Unity Performance and Memory</strong>. Just know <em>why</em> it exists.</p>
+                </div>
+            </section>
+
+            <!-- Section 7: Exercise & Quiz -->
+            <section id="exercise" class="lesson-section">
+                <h2>Exercise &amp; Quiz</h2>
+
+                <div class="card card-info">
+                    <h3>🏋️ Exercise: Build a Bullet Spawner</h3>
+                    <p><strong>Objective:</strong> Fire self-destructing bullet prefabs from a gun on a key press.</p>
+
+                    <h4>Instructions:</h4>
+                    <ol>
+                        <li>Create a small Sphere with a <code>Rigidbody</code> (turn off <em>Use Gravity</em> so it flies straight). Add the <code>Bullet</code> script. Drag it into the Project window to make a <strong>prefab</strong>, then delete it from the scene.</li>
+                        <li>Create an empty <code>Muzzle</code> child on your player/gun, positioned at the barrel tip and facing forward.</li>
+                        <li>Write <code>Gun</code> with <code>[SerializeField]</code> fields for the bullet prefab and the muzzle; on <code>Space</code>, <code>Instantiate</code> a bullet at the muzzle and launch it forward.</li>
+                        <li>In <code>Bullet</code>, self-destruct after <code>lifetime</code> seconds using the timed <code>Destroy</code> overload.</li>
+                        <li>Play: each press should fire a bullet that flies off and disappears a few seconds later. Confirm bullets don't accumulate forever in the Hierarchy.</li>
+                    </ol>
+
+                    <h4>Starter Code:</h4>
+                    <pre><code class="language-csharp">using UnityEngine;
+
+public class Gun : MonoBehaviour
+{
+    [SerializeField] private Bullet bulletPrefab;
+    [SerializeField] private Transform muzzle;
+    [SerializeField] private float bulletSpeed = 20f;
+
+    void Update()
+    {
+        // TODO: on Space, spawn a bullet at the muzzle and launch it forward.
+    }
+}</code></pre>
+
+                    <details>
+                        <summary>💡 Hint</summary>
+                        <p><code>Instantiate(bulletPrefab, muzzle.position, muzzle.rotation)</code> returns a <code>Bullet</code> directly (generic overload). Call your <code>Launch(muzzle.forward * bulletSpeed)</code> on it. In <code>Bullet.Start</code>, call <code>Destroy(gameObject, lifetime)</code> so each bullet cleans itself up.</p>
+                    </details>
+
+                    <details>
+                        <summary>✅ Solution</summary>
+                        <pre><code class="language-csharp">using UnityEngine;
+
+public class Gun : MonoBehaviour
+{
+    [SerializeField] private Bullet bulletPrefab;
+    [SerializeField] private Transform muzzle;
+    [SerializeField] private float bulletSpeed = 20f;
+
+    void Update()
+    {
+        if (Input.GetKeyDown(KeyCode.Space))
+            Fire();
+    }
+
+    void Fire()
+    {
+        Bullet bullet = Instantiate(bulletPrefab, muzzle.position, muzzle.rotation);
+        bullet.Launch(muzzle.forward * bulletSpeed);
+    }
+}</code></pre>
+                        <pre><code class="language-csharp">using UnityEngine;
+
+[RequireComponent(typeof(Rigidbody))]
+public class Bullet : MonoBehaviour
+{
+    [SerializeField] private float lifetime = 3f;
+    private Rigidbody body;
+
+    void Awake() =&gt; body = GetComponent&lt;Rigidbody&gt;();
+
+    void Start()
+    {
+        Destroy(gameObject, lifetime);   // self-cleanup
+    }
+
+    public void Launch(Vector3 velocity)
+    {
+        body.linearVelocity = velocity;
+    }
+}</code></pre>
+                        <p>The prefab is the template; each press stamps out a configured instance; the timed <code>Destroy</code> keeps the scene from filling with dead bullets. This exact pattern powers guns, spell-casting, spawners, and particle bursts.</p>
+                    </details>
+                </div>
+
+                <!-- Quiz Section -->
+                <div class="card quiz-container">
+                    <h3>🎯 Quick Quiz</h3>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 1:</strong> What is a prefab, in one sentence?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="A prefab isn't a script file — it's a saved GameObject with all its components and data.">
+                                A) A special C# script that spawns objects.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! A prefab is a saved GameObject template (blueprint) you instantiate copies of at runtime.">
+                                B) A saved GameObject template you create instances of with <code>Instantiate</code>.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="Materials define surface appearance — that's a different asset entirely.">
+                                C) A material that defines an object's color.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 2:</strong> You want a spawned bullet to disappear after 3 seconds with the least code. What do you write?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="This removes only the script component, leaving the bullet in the scene.">
+                                A) <code>Destroy(this);</code>
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! The timed overload Destroy(gameObject, 3f) removes the whole object after the delay — self-cleanup in one line.">
+                                B) <code>Destroy(gameObject, 3f);</code>
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="DestroyImmediate is for editor tooling and is unsafe during gameplay.">
+                                C) <code>DestroyImmediate(gameObject);</code>
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 3:</strong> Why do spawn-heavy games eventually switch from <code>Instantiate</code>/<code>Destroy</code> to object pooling?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="Instantiate can absolutely position objects — that's not the issue.">
+                                A) Because <code>Instantiate</code> can't set an object's position.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! Constant instantiate/destroy allocates memory and creates garbage, causing GC hitches; pooling reuses objects to avoid that.">
+                                B) Constant creating and destroying allocates memory and generates garbage, causing GC frame hitches.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="Prefabs can be instantiated any number of times — there's no such limit.">
+                                C) Because a prefab can only be instantiated a fixed number of times.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section 8: Summary -->
+            <section id="summary" class="lesson-section">
+                <h2>Summary</h2>
+
+                <div class="card card-success">
+                    <h3>🎉 Key Takeaways</h3>
+                    <ul>
+                        <li>A <strong>prefab</strong> is a saved GameObject template — the "class" you stamp instances from at runtime.</li>
+                        <li><code>Instantiate(prefab, position, rotation)</code> spawns a copy; capture the return value to configure it. The generic <code>Instantiate&lt;T&gt;()</code> hands you a typed component with no cast.</li>
+                        <li>Give a script a prefab via a <code>[SerializeField]</code> reference (Lesson 1.3), and configure the new instance right after spawning (e.g. <code>bullet.Launch(...)</code>).</li>
+                        <li><code>Destroy(gameObject)</code> removes an object; <code>Destroy(gameObject, seconds)</code> delays it — ideal for self-cleaning, short-lived objects.</li>
+                        <li><code>Destroy</code> is <strong>deferred</strong> (end of frame) and the reference then reads as <code>null</code> — guard before use; avoid <code>DestroyImmediate</code> at runtime.</li>
+                        <li>Spawned objects run the normal <code>Awake</code>→<code>OnDestroy</code> lifecycle; heavy spawning motivates <strong>object pooling</strong> (Lesson 5.1).</li>
+                    </ul>
+                </div>
+
+                <h3>📚 Additional Resources</h3>
+                <ul>
+                    <li><a href="https://docs.unity3d.com/ScriptReference/Object.Instantiate.html" target="_blank" rel="noopener">Scripting Reference — Object.Instantiate</a></li>
+                    <li><a href="https://docs.unity3d.com/ScriptReference/Object.Destroy.html" target="_blank" rel="noopener">Scripting Reference — Object.Destroy</a></li>
+                    <li><a href="https://docs.unity3d.com/Manual/Prefabs.html" target="_blank" rel="noopener">Manual — Prefabs</a></li>
+                    <li><a href="https://docs.unity3d.com/ScriptReference/Pool.ObjectPool_1.html" target="_blank" rel="noopener">Scripting Reference — ObjectPool (preview of Lesson 5.1)</a></li>
+                </ul>
+
+                <h3>🚀 What's Next?</h3>
+                <p>That wraps <strong>Module 2 — Gameplay Scripting</strong>: things move, collide, spawn, and disappear. Module 3 turns to <em>structure</em>. Lesson 3.1, <em>ScriptableObjects for Data</em>, shows a cleaner way to hold shared data (like bullet stats) as assets — no MonoBehaviour required.</p>
+
+                <!-- Encouragement Card -->
+                <div class="card card-accent" style="text-align: center; padding: 2rem;">
+                    <h3>🎉 Module 2 complete!</h3>
+                    <p>Input, physics, and now spawning — you have the full gameplay toolkit. From here we focus on organizing all this into clean, maintainable systems.</p>
+                </div>
+            </section>
+
+            <!-- Lesson Navigation -->
+            <nav class="lesson-nav" aria-label="Lesson Navigation">
+                <a href="lesson_05.html" class="prev-lesson">← Previous: Lesson 2.2 — Physics and Collisions</a>
+                <a href="index.html" class="home-link">🏠 Course Home</a>
+                <a href="lesson_07.html" class="next-lesson">Next: Lesson 3.1 — ScriptableObjects for Data →</a>
+            </nav>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+        <p>&copy; 2026 Ray de la Paz. All rights reserved.</p>
+        <div class="footer-links">
+            <a href="https://rays-home.netlify.app/">Ray's House of Fun</a>
+            <a href="https://rays-home.netlify.app/contact">Contact</a>
+            <a href="#" id="print-button">Print Page</a>
+        </div>
+        <p><small>Press <kbd>?</kbd> for keyboard shortcuts</small></p>
+    </footer>
+
+    <!-- JavaScript -->
+    <script src="js/clipboard.js"></script>
+    <script src="js/course-enhancements.js"></script>
+</body>
+</html>

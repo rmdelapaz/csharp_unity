@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Understand Unity's component model — how a plain C# class becomes a MonoBehaviour, why Unity favors composition over inheritance, and how GameObjects, Components, and scripts fit together.">
+    <meta name="author" content="Ray de la Paz">
+    <title>Lesson 1.1: MonoBehaviour and the Component Model - C# Scripting in Unity</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="icon" type="image/png" href="favicon.png">
+    <!-- Mermaid — initialized by course-enhancements.js for theme awareness -->
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        window.__mermaid = mermaid;
+        // Initial config — JS will re-init on theme change
+        const isDark = localStorage.getItem('theme') === 'dark' ||
+            (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: isDark ? 'dark' : 'default',
+            themeVariables: isDark
+                ? { primaryColor: '#334155', primaryTextColor: '#e2e8f0', primaryBorderColor: '#6366f1', lineColor: '#94a3b8', secondaryColor: '#1e293b', tertiaryColor: '#0f172a' }
+                : { primaryColor: '#eff6ff', primaryTextColor: '#1e293b', primaryBorderColor: '#3b82f6', lineColor: '#64748b', secondaryColor: '#f8fafc', tertiaryColor: '#f1f5f9' }
+        });
+    </script>
+</head>
+<body>
+    <!-- Skip to main content for accessibility -->
+    <a href="#main-content" class="skip-to-main">Skip to main content</a>
+
+
+    <!-- Navigation -->
+    <nav class="main-nav">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo">C# Scripting in Unity</a>
+            <button id="mobile-menu-toggle" class="mobile-menu-toggle" aria-expanded="false" aria-controls="nav-links">
+                ☰
+            </button>
+            <div class="nav-links" id="nav-links">
+                <a href="index.html">Home</a>
+                <a href="index.html#modules">All Modules</a>
+                <span class="nav-divider"></span>
+                <a href="https://rays-home.netlify.app/">Ray's House of Fun</a>
+                <a href="https://rays-home.netlify.app/contact">Contact</a>
+                <button id="theme-toggle" aria-label="Toggle dark/light mode">🌙</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Breadcrumb -->
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+        <ul>
+            <li><a href="index.html">Home</a></li>
+            <li><a href="index.html#modules">Module 1</a></li>
+            <li aria-current="page">Lesson 1.1: MonoBehaviour and the Component Model</li>
+        </ul>
+    </nav>
+
+    <!-- Main Content -->
+    <main id="main-content">
+        <div class="container">
+            <!-- Lesson Header -->
+            <header>
+                <h1>📝 Lesson 1.1: MonoBehaviour and the Component Model</h1>
+                <p class="lead">You already know how to write C# classes. In Unity, most of the classes you write are a special kind: <strong>components</strong>. This lesson explains what a <code>MonoBehaviour</code> really is, why you never <code>new</code> one, and why Unity builds behavior by <em>composing</em> small components instead of growing deep inheritance trees.</p>
+
+                <!-- Learning objectives -->
+                <div class="card card-info">
+                    <h2>🎯 Learning Objectives</h2>
+                    <p>By the end of this lesson, you will be able to:</p>
+                    <ul>
+                        <li>Explain the relationship between a <strong>GameObject</strong>, a <strong>Component</strong>, and a <strong>MonoBehaviour</strong></li>
+                        <li>Describe where <code>MonoBehaviour</code> sits in Unity's class hierarchy and what it gives your script</li>
+                        <li>Write a minimal MonoBehaviour and attach it to a GameObject</li>
+                        <li>Explain why you use <code>AddComponent</code> instead of a constructor, and why <code>new MyScript()</code> is wrong</li>
+                        <li>Apply <strong>composition over inheritance</strong> to design game behavior as small, reusable components</li>
+                    </ul>
+                    <p><strong>Estimated Time:</strong> 60 minutes</p>
+                    <p><strong>Project:</strong> Build a GameObject out of small single-purpose components — a spinning, self-destructing pickup — without a single line of inheritance.</p>
+                </div>
+            </header>
+
+            <!-- Sticky Table of Contents -->
+            <details class="card toc-card" open>
+                <summary aria-label="Toggle table of contents">
+                    <span class="toc-icon" aria-hidden="true">📑</span>
+                    <span class="toc-label">In This Lesson</span>
+                    <span class="toc-chevron" aria-hidden="true">▾</span>
+                </summary>
+                <nav aria-label="Table of Contents">
+                    <ol>
+                        <li><a href="#introduction" class="toc-link">From Plain Classes to Components</a></li>
+                        <li><a href="#anatomy" class="toc-link">GameObjects, Components &amp; MonoBehaviour</a></li>
+                        <li><a href="#hierarchy" class="toc-link">Where MonoBehaviour Comes From</a></li>
+                        <li><a href="#first-script" class="toc-link">Your First MonoBehaviour</a></li>
+                        <li><a href="#no-new" class="toc-link">Why You Never <code>new</code> a Component</a></li>
+                        <li><a href="#composition" class="toc-link">Composition Over Inheritance</a></li>
+                        <li><a href="#exercise" class="toc-link">Exercise &amp; Quiz</a></li>
+                        <li><a href="#summary" class="toc-link">Summary</a></li>
+                    </ol>
+                </nav>
+            </details>
+
+            <!-- Section 1: Introduction -->
+            <section id="introduction" class="lesson-section">
+                <h2>From Plain Classes to Components</h2>
+                <p>In the "Introduction to C#" course you built classes that you controlled from top to bottom: you called <code>new</code>, you invoked methods, you decided exactly when everything ran. A console app has one entry point — <code>Main</code> — and you drive it.</p>
+
+                <p>Unity flips that around. There is no <code>Main</code> that you write. Instead, the Unity engine runs the loop, and <em>your code is invited in</em> as the engine ticks along. The way you plug your C# into that engine loop is by writing a <strong>component</strong> and attaching it to an object in the scene.</p>
+
+                <div class="card card-accent">
+                    <h4>📖 Definition</h4>
+                    <p><strong>Component:</strong> a piece of behavior or data that you attach to a GameObject. A <code>Transform</code>, a <code>Rigidbody</code>, a <code>Camera</code>, and every script you write are all components. A GameObject is essentially a <em>bag of components</em>.</p>
+                </div>
+
+                <p>This is the single most important mental shift for a C# programmer arriving in Unity: you rarely build one big class that "is" the player. Instead you assemble a Player GameObject out of many small components — one for movement, one for health, one for the camera — and Unity runs them all. Let's take that apart.</p>
+            </section>
+
+            <!-- Section 2: Anatomy -->
+            <section id="anatomy" class="lesson-section">
+                <h2>GameObjects, Components &amp; MonoBehaviour</h2>
+                <p>Three words get used constantly in Unity, and beginners blur them together. Keep them distinct:</p>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>Term</th><th>What it is</th><th>Analogy</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td><strong>GameObject</strong></td><td>A container that lives in a scene. On its own it does almost nothing — it just holds components and has a name, a tag, and a layer.</td><td>An empty pegboard.</td></tr>
+                            <tr><td><strong>Component</strong></td><td>A unit of data or behavior attached to a GameObject (<code>Transform</code>, <code>Rigidbody</code>, <code>Light</code>, your scripts…).</td><td>A tool you hang on the pegboard.</td></tr>
+                            <tr><td><strong>MonoBehaviour</strong></td><td>The base class you inherit from so that <em>your</em> C# class is allowed to be a component and hook into the engine.</td><td>The standard mount that lets a tool hang on the board.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <p>Every GameObject always has at least one component: a <code>Transform</code>, which stores its position, rotation, and scale. You can never remove it. Everything else — renderers, colliders, and your scripts — you add on top.</p>
+
+                <div class="mermaid">
+                    graph TD
+                    GO["🎮 GameObject: 'Player'"]
+                    GO --> T["Transform<br/>(position, rotation, scale)"]
+                    GO --> R["Rigidbody<br/>(physics)"]
+                    GO --> C["Collider<br/>(collision shape)"]
+                    GO --> S1["PlayerMovement<br/>(your script)"]
+                    GO --> S2["Health<br/>(your script)"]
+                    style GO fill:#eff6ff,stroke:#3b82f6,stroke-width:2px
+                    style S1 fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                    style S2 fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                </div>
+
+                <p>The green boxes are the scripts <em>you</em> write. They sit right alongside Unity's built-in components — from the engine's point of view, your <code>Health</code> script and its own <code>Rigidbody</code> are the same kind of thing: both are components attached to the GameObject.</p>
+
+                <blockquote>
+                    <strong>⚠️ Important:</strong> A script asset sitting in your <code>Assets</code> folder does nothing on its own. It only runs when an <em>instance</em> of it is attached to a GameObject that exists in a loaded scene. "Attaching" a script <strong>is</strong> creating a component instance.
+                </blockquote>
+            </section>
+
+            <!-- Section 3: Hierarchy -->
+            <section id="hierarchy" class="lesson-section">
+                <h2>Where MonoBehaviour Comes From</h2>
+                <p>When you write <code>class Health : MonoBehaviour</code>, you are inheriting a whole chain of Unity base classes. Each link in that chain hands your script another capability. Here is the real hierarchy:</p>
+
+                <div class="mermaid">
+                    graph TD
+                    O["UnityEngine.Object<br/>can be referenced in the Inspector; Destroy() works on it"]
+                    O --> Comp["Component<br/>knows its GameObject &amp; Transform; GetComponent, CompareTag"]
+                    Comp --> Beh["Behaviour<br/>adds the 'enabled' switch"]
+                    Beh --> Mono["MonoBehaviour<br/>adds event functions (Awake/Start/Update…) &amp; coroutines"]
+                    Mono --> Yours["Health : MonoBehaviour<br/>(your script)"]
+                    style Mono fill:#eff6ff,stroke:#3b82f6,stroke-width:2px
+                    style Yours fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                </div>
+
+                <p>You don't need to memorize the chain, but a few facts from it explain things you'll use every day:</p>
+                <ul>
+                    <li><strong>From <code>Object</code>:</strong> your component can be dragged into an Inspector slot as a reference, and <code>Destroy(...)</code> can delete it.</li>
+                    <li><strong>From <code>Component</code>:</strong> you get <code>gameObject</code>, <code>transform</code>, <code>GetComponent&lt;T&gt;()</code>, and <code>CompareTag(...)</code> for free — no fields to declare (we cover these in Lesson 1.3).</li>
+                    <li><strong>From <code>Behaviour</code>:</strong> the <code>enabled</code> flag. Set <code>enabled = false</code> and Unity stops calling this component's <code>Update</code>.</li>
+                    <li><strong>From <code>MonoBehaviour</code>:</strong> the ability to define <em>event functions</em> like <code>Awake</code>, <code>Start</code>, and <code>Update</code> that the engine calls automatically, plus coroutine support. That is the whole point of inheriting it — it's your hook into the game loop, which is the subject of Lesson 1.2.</li>
+                </ul>
+
+                <div class="card card-info">
+                    <h4>💡 Not every script is a MonoBehaviour</h4>
+                    <p>Only classes that need to live on a GameObject and respond to the engine loop inherit <code>MonoBehaviour</code>. Plain data classes, helpers, and static utilities stay as ordinary C# classes — and you <em>do</em> <code>new</code> those normally. Reserve <code>MonoBehaviour</code> for "this thing is attached to something in the scene."</p>
+                </div>
+            </section>
+
+            <!-- Section 4: First script -->
+            <section id="first-script" class="lesson-section">
+                <h2>Your First MonoBehaviour</h2>
+                <p>When you create a script in Unity (right-click in the Project window → <em>Create → C# Script</em>), you get a template like this. Two rules matter: it inherits <code>MonoBehaviour</code>, and <strong>the class name must exactly match the file name</strong> (a <code>Health.cs</code> file must contain <code>class Health</code>), or Unity won't let you attach it.</p>
+
+                <pre><code class="language-csharp">using UnityEngine;
+
+public class Health : MonoBehaviour
+{
+    // A field marked public shows up in the Inspector so a designer can tune it.
+    public int maxHealth = 100;
+
+    // A private backing value — not shown in the Inspector by default.
+    private int currentHealth;
+
+    // Called once by Unity before the first frame. (More on this in Lesson 1.2.)
+    void Start()
+    {
+        currentHealth = maxHealth;
+        Debug.Log($"{gameObject.name} spawned with {currentHealth} HP");
+    }
+
+    // A normal public method — other components can call this.
+    public void TakeDamage(int amount)
+    {
+        currentHealth -= amount;
+        if (currentHealth &lt;= 0)
+        {
+            Debug.Log($"{gameObject.name} died");
+            Destroy(gameObject);   // remove the whole GameObject from the scene
+        }
+    }
+}</code></pre>
+
+                <p>Look at what your class got for free without declaring any of it: <code>gameObject</code> (the object this component is attached to), <code>Debug.Log</code>, and <code>Destroy</code>. Those all came down the inheritance chain from <code>MonoBehaviour</code> and its bases. Your job was only to add the <em>game-specific</em> parts: a health value and a way to take damage.</p>
+
+                <div class="card card-success">
+                    <h4>✅ Pro Tip: keep components small and named for their job</h4>
+                    <p>A well-designed component does <em>one</em> thing and its name says what: <code>Health</code>, <code>PlayerMovement</code>, <code>Rotator</code>, <code>ScoreDisplay</code>. If you're tempted to name a script <code>GameManagerThatAlsoHandlesPlayerAndUI</code>, that's three components wearing a trench coat.</p>
+                </div>
+            </section>
+
+            <!-- Section 5: No new -->
+            <section id="no-new" class="lesson-section">
+                <h2>Why You Never <code>new</code> a Component</h2>
+                <p>Here is the biggest surprise for a C# programmer. In plain C#, you create an object like this:</p>
+                <pre><code class="language-csharp">Health h = new Health();   // ❌ WRONG for a MonoBehaviour</code></pre>
+
+                <p>In Unity that line is a mistake. A <code>MonoBehaviour</code> is meaningless without a GameObject to live on — <code>new Health()</code> would create a bare C# object with no <code>gameObject</code>, no <code>transform</code>, and Unity would never call its <code>Start</code> or <code>Update</code>. (Unity even logs a warning if you try.) You also should <strong>not</strong> write a constructor for a MonoBehaviour; the engine instantiates it, and your setup code belongs in <code>Awake</code>/<code>Start</code> instead.</p>
+
+                <p>So how do components get created? Two ways:</p>
+                <ul>
+                    <li><strong>In the Editor:</strong> you drag the script onto a GameObject, or click <em>Add Component</em>. Unity creates the instance for you.</li>
+                    <li><strong>In code:</strong> you ask an existing GameObject to add one with <code>AddComponent</code>.</li>
+                </ul>
+
+                <pre><code class="language-csharp">// Create a GameObject, then add components to it — the Unity way.
+GameObject enemy = new GameObject("Enemy");   // a GameObject CAN be new'd
+Health health = enemy.AddComponent&lt;Health&gt;(); // let Unity build the component
+health.maxHealth = 50;                          // now it's safe to configure</code></pre>
+
+                <blockquote>
+                    <strong>💡 Rule of thumb:</strong> You may <code>new</code> a <code>GameObject</code> and you may <code>new</code> a plain C# class. You may <strong>never</strong> <code>new</code> a <code>MonoBehaviour</code> — ask a GameObject to <code>AddComponent</code> it, or attach it in the Editor.
+                </blockquote>
+
+                <div class="card card-warning">
+                    <h4>⚠️ Watch Out</h4>
+                    <p>Because Unity — not you — constructs the object, a field initializer like <code>private int currentHealth = maxHealth;</code> can't depend on Inspector values being set yet. Do that kind of initialization inside <code>Awake</code> or <code>Start</code>, where the component is fully wired up. Lesson 1.2 covers exactly when each of those runs.</p>
+                </div>
+            </section>
+
+            <!-- Section 6: Composition -->
+            <section id="composition" class="lesson-section">
+                <h2>Composition Over Inheritance</h2>
+                <p>In the OOP part of the intro course, "reuse" mostly meant <em>inheritance</em>: an <code>Enemy</code> extends <code>Character</code> extends <code>Entity</code>. That works for a while, but game objects vary along too many independent axes — "flying?", "shoots?", "has health?", "can be picked up?" — to fit one tidy tree. You quickly hit the classic problem: where does a <em>flying, shooting, healable</em> object go, versus a <em>walking, shooting, healable</em> one?</p>
+
+                <p>Unity's answer is <strong>composition</strong>: instead of one deep class that <em>is</em> everything, you attach several small components that each add one capability. Need it to shoot? Add a <code>Shooter</code>. Need health? Add a <code>Health</code>. Mix and match per object.</p>
+
+                <div class="mermaid">
+                    graph TD
+                    subgraph Inheritance["❌ Deep Inheritance (rigid)"]
+                        E1["Entity"] --> C1["Character"]
+                        C1 --> En1["Enemy"]
+                        C1 --> Pl1["Player"]
+                        En1 --> FE["FlyingShootingEnemy?"]
+                    end
+                    subgraph Composition["✅ Composition (flexible)"]
+                        GO2["Enemy GameObject"]
+                        GO2 --> H["Health"]
+                        GO2 --> M["Movement"]
+                        GO2 --> Sh["Shooter"]
+                    end
+                    style FE fill:#fdecea,stroke:#c0392b,stroke-width:2px
+                    style GO2 fill:#eff6ff,stroke:#3b82f6,stroke-width:2px
+                    style H fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                    style M fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                    style Sh fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                </div>
+
+                <p>To make the enemy fly, you swap its <code>Movement</code> component for a <code>FlyingMovement</code> and change nothing else — <code>Health</code> and <code>Shooter</code> don't care. To make a friendly turret, reuse <code>Health</code> and <code>Shooter</code> but drop <code>Movement</code>. This is why Unity ships <code>Rigidbody</code>, <code>Collider</code>, and <code>AudioSource</code> as <em>separate</em> components rather than one giant "PhysicalObject" base class.</p>
+
+                <div class="card card-success">
+                    <h4>✅ The design guideline</h4>
+                    <p>Prefer <strong>"has-a"</strong> (composition — attach a component) over <strong>"is-a"</strong> (inheritance — extend a class). Inheritance still has its place (<code>Health</code> genuinely <em>is-a</em> <code>MonoBehaviour</code>), but for gameplay <em>capabilities</em>, reach for another component first.</p>
+                </div>
+
+                <blockquote>
+                    <strong>💡 Components talk to each other, they don't inherit from each other.</strong> When your <code>Shooter</code> needs to reduce the target's health, it finds the target's <code>Health</code> component and calls <code>TakeDamage</code> — it does not try to <em>be</em> a Health. How one component finds another is Lesson 1.3.
+                </blockquote>
+            </section>
+
+            <!-- Section 7: Exercise & Quiz -->
+            <section id="exercise" class="lesson-section">
+                <h2>Exercise &amp; Quiz</h2>
+
+                <div class="card card-info">
+                    <h3>🏋️ Exercise: Build a Pickup from Small Components</h3>
+                    <p><strong>Objective:</strong> Assemble one GameObject's behavior out of two independent single-purpose components — no inheritance between them — to feel the component model directly.</p>
+
+                    <h4>Instructions:</h4>
+                    <ol>
+                        <li>In a Unity project, create a Sphere (<em>GameObject → 3D Object → Sphere</em>) and name it <code>Coin</code>.</li>
+                        <li>Create a script <code>Rotator.cs</code> that spins the object continuously, and a script <code>SelfDestruct.cs</code> that removes the object after a set number of seconds.</li>
+                        <li>Attach <strong>both</strong> scripts to the <code>Coin</code> via <em>Add Component</em>. Each should expose a tunable value in the Inspector.</li>
+                        <li>Press Play: the coin should spin, then disappear on its own. Notice that neither script knows the other exists.</li>
+                        <li>Reasoning question to answer in a comment: which of these two scripts could you drop onto a completely different GameObject unchanged? (Answer: both — that's the point.)</li>
+                    </ol>
+
+                    <h4>Starter Code:</h4>
+                    <pre><code class="language-csharp">using UnityEngine;
+
+public class Rotator : MonoBehaviour
+{
+    public float degreesPerSecond = 90f;
+
+    void Update()
+    {
+        // TODO: rotate this object around its Y axis every frame.
+        // Hint: transform.Rotate(...) and Time.deltaTime (covered fully in Module 2).
+    }
+}</code></pre>
+                    <pre><code class="language-csharp">using UnityEngine;
+
+public class SelfDestruct : MonoBehaviour
+{
+    public float lifetimeSeconds = 3f;
+
+    void Start()
+    {
+        // TODO: schedule this GameObject to be destroyed after 'lifetimeSeconds'.
+    }
+}</code></pre>
+
+                    <details>
+                        <summary>💡 Hint</summary>
+                        <p><code>transform.Rotate(0f, degreesPerSecond * Time.deltaTime, 0f)</code> spins the object smoothly, frame-rate independent. To remove the object later, Unity gives you an overload of <code>Destroy</code> that takes a delay: <code>Destroy(gameObject, lifetimeSeconds)</code>. Remember it's <code>gameObject</code> (the whole object) you want gone, not just the script.</p>
+                    </details>
+
+                    <details>
+                        <summary>✅ Solution</summary>
+                        <pre><code class="language-csharp">using UnityEngine;
+
+public class Rotator : MonoBehaviour
+{
+    public float degreesPerSecond = 90f;
+
+    void Update()
+    {
+        // Frame-rate independent spin around the Y axis.
+        transform.Rotate(0f, degreesPerSecond * Time.deltaTime, 0f);
+    }
+}</code></pre>
+                        <pre><code class="language-csharp">using UnityEngine;
+
+public class SelfDestruct : MonoBehaviour
+{
+    public float lifetimeSeconds = 3f;
+
+    void Start()
+    {
+        // Ask Unity to destroy the whole GameObject after the delay.
+        Destroy(gameObject, lifetimeSeconds);
+    }
+}</code></pre>
+                        <p>Both components are attached to the same <code>Coin</code>, yet each is completely self-contained and reusable. Put <code>Rotator</code> on a pickup, a compass needle, or a fan — it doesn't care. That independence is the component model working for you.</p>
+                    </details>
+                </div>
+
+                <!-- Quiz Section -->
+                <div class="card quiz-container">
+                    <h3>🎯 Quick Quiz</h3>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 1:</strong> What is the relationship between a GameObject and a Component?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="It's the other way around — think about which one contains the other.">
+                                A) A Component contains many GameObjects.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! A GameObject is a container that holds components; the components provide the actual data and behavior.">
+                                B) A GameObject is a container that holds one or more Components.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="They are different things — a GameObject is not itself a component.">
+                                C) They are two names for the same thing.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 2:</strong> Why is <code>new Health()</code> the wrong way to create a <code>MonoBehaviour</code>?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="It's not about the constructor being private — it's about needing a GameObject.">
+                                A) Because <code>MonoBehaviour</code> constructors are private.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="Performance isn't the issue here; correctness is.">
+                                B) Because <code>new</code> is too slow in Unity.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! A MonoBehaviour must live on a GameObject to have a transform and receive engine callbacks. Use GameObject.AddComponent (or attach it in the Editor) instead.">
+                                C) A component must live on a GameObject to work; you use <code>AddComponent</code> (or attach it in the Editor) so Unity creates it properly.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 3:</strong> You need an object that can fly, shoot, and take damage. What does the "composition over inheritance" guideline recommend?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="A deep chain like this is exactly what composition avoids.">
+                                A) Create a <code>FlyingShootingDamageableEnemy</code> class that inherits from a long chain of base classes.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! Attach three small, independent components; each adds one capability and can be reused or swapped on its own.">
+                                B) Attach three small components — <code>FlyingMovement</code>, <code>Shooter</code>, and <code>Health</code> — to one GameObject.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="One giant script is the opposite of composition and hard to reuse.">
+                                C) Put all the flying, shooting, and health logic into a single large script.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section 8: Summary -->
+            <section id="summary" class="lesson-section">
+                <h2>Summary</h2>
+
+                <div class="card card-success">
+                    <h3>🎉 Key Takeaways</h3>
+                    <ul>
+                        <li>A <strong>GameObject</strong> is a container; <strong>Components</strong> give it data and behavior; a <strong>MonoBehaviour</strong> is the base class that lets <em>your</em> C# class be a component.</li>
+                        <li>Inheriting <code>MonoBehaviour</code> hands your script <code>gameObject</code>, <code>transform</code>, <code>GetComponent</code>, the <code>enabled</code> switch, and — crucially — engine event functions like <code>Awake</code>/<code>Start</code>/<code>Update</code>.</li>
+                        <li>You <strong>never</strong> <code>new</code> a MonoBehaviour and you don't give it a constructor. Attach it in the Editor or call <code>gameObject.AddComponent&lt;T&gt;()</code>; do setup in <code>Awake</code>/<code>Start</code>.</li>
+                        <li>The class name must match the file name, and a script only runs once it's an instance attached to a GameObject in a loaded scene.</li>
+                        <li>Favor <strong>composition</strong> — assemble behavior from small, single-purpose components — over deep inheritance trees.</li>
+                    </ul>
+                </div>
+
+                <h3>📚 Additional Resources</h3>
+                <ul>
+                    <li><a href="https://docs.unity3d.com/Manual/class-MonoBehaviour.html" target="_blank" rel="noopener">Unity Manual — MonoBehaviour</a></li>
+                    <li><a href="https://docs.unity3d.com/ScriptReference/MonoBehaviour.html" target="_blank" rel="noopener">Scripting Reference — MonoBehaviour</a></li>
+                    <li><a href="https://docs.unity3d.com/Manual/GameObjects.html" target="_blank" rel="noopener">Unity Manual — GameObjects and the component model</a></li>
+                </ul>
+
+                <h3>🚀 What's Next?</h3>
+                <p>You now know <em>what</em> a MonoBehaviour is and how it attaches to a GameObject. Next we'll look at <em>when</em> Unity calls into it — the event function lifecycle: <code>Awake</code>, <code>OnEnable</code>, <code>Start</code>, <code>Update</code>, <code>FixedUpdate</code>, and <code>OnDestroy</code>, and the exact order they fire.</p>
+
+                <!-- Encouragement Card -->
+                <div class="card card-accent" style="text-align: center; padding: 2rem;">
+                    <h3>🎉 Component model unlocked!</h3>
+                    <p>You've made the leap from "one class runs everything" to "small components, composed." That idea underpins the entire rest of the course.</p>
+                </div>
+            </section>
+
+            <!-- Lesson Navigation -->
+            <nav class="lesson-nav" aria-label="Lesson Navigation">
+                <a href="index.html" class="prev-lesson">← Course Home</a>
+                <a href="index.html" class="home-link">🏠 Course Home</a>
+                <a href="lesson_02.html" class="next-lesson">Next: Lesson 1.2 — The Event Function Lifecycle →</a>
+            </nav>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+        <p>&copy; 2026 Ray de la Paz. All rights reserved.</p>
+        <div class="footer-links">
+            <a href="https://rays-home.netlify.app/">Ray's House of Fun</a>
+            <a href="https://rays-home.netlify.app/contact">Contact</a>
+            <a href="#" id="print-button">Print Page</a>
+        </div>
+        <p><small>Press <kbd>?</kbd> for keyboard shortcuts</small></p>
+    </footer>
+
+    <!-- JavaScript -->
+    <script src="js/clipboard.js"></script>
+    <script src="js/course-enhancements.js"></script>
+</body>
+</html>

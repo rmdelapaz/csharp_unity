@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Capstone project — build a complete Unity game (Coin Rush) that combines components, lifecycle, input, physics, ScriptableObjects, events, coroutines, a manager, UI, save/load, pooling, and testing.">
+    <meta name="author" content="Ray de la Paz">
+    <title>Lesson 5.3: Capstone Project - C# Scripting in Unity</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="icon" type="image/png" href="favicon.png">
+    <!-- Mermaid — initialized by course-enhancements.js for theme awareness -->
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        window.__mermaid = mermaid;
+        // Initial config — JS will re-init on theme change
+        const isDark = localStorage.getItem('theme') === 'dark' ||
+            (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: isDark ? 'dark' : 'default',
+            themeVariables: isDark
+                ? { primaryColor: '#334155', primaryTextColor: '#e2e8f0', primaryBorderColor: '#6366f1', lineColor: '#94a3b8', secondaryColor: '#1e293b', tertiaryColor: '#0f172a' }
+                : { primaryColor: '#eff6ff', primaryTextColor: '#1e293b', primaryBorderColor: '#3b82f6', lineColor: '#64748b', secondaryColor: '#f8fafc', tertiaryColor: '#f1f5f9' }
+        });
+    </script>
+</head>
+<body>
+    <!-- Skip to main content for accessibility -->
+    <a href="#main-content" class="skip-to-main">Skip to main content</a>
+
+
+    <!-- Navigation -->
+    <nav class="main-nav">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo">C# Scripting in Unity</a>
+            <button id="mobile-menu-toggle" class="mobile-menu-toggle" aria-expanded="false" aria-controls="nav-links">
+                ☰
+            </button>
+            <div class="nav-links" id="nav-links">
+                <a href="index.html">Home</a>
+                <a href="index.html#modules">All Modules</a>
+                <span class="nav-divider"></span>
+                <a href="https://rays-home.netlify.app/">Ray's House of Fun</a>
+                <a href="https://rays-home.netlify.app/contact">Contact</a>
+                <button id="theme-toggle" aria-label="Toggle dark/light mode">🌙</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Breadcrumb -->
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+        <ul>
+            <li><a href="index.html">Home</a></li>
+            <li><a href="index.html#modules">Module 5</a></li>
+            <li aria-current="page">Lesson 5.3: Capstone Project</li>
+        </ul>
+    </nav>
+
+    <!-- Main Content -->
+    <main id="main-content">
+        <div class="container">
+            <!-- Lesson Header -->
+            <header>
+                <h1>📝 Lesson 5.3: Capstone Project — "Coin Rush"</h1>
+                <p class="lead">This is where everything comes together. You'll build <strong>Coin Rush</strong>, a complete top-down arcade game: roll a ball to grab spawning coins before a timer runs out, beat your saved high score. Every module of this course shows up — components, lifecycle, input, physics, ScriptableObjects, events, coroutines, a manager, UI, save/load, pooling, and a test.</p>
+
+                <!-- Learning objectives -->
+                <div class="card card-info">
+                    <h2>🎯 What You'll Build</h2>
+                    <p>A small but <em>complete</em> game loop, wiring together the whole course:</p>
+                    <ul>
+                        <li>A physics-driven <strong>player</strong> that moves and collects coins (Modules 1–2)</li>
+                        <li><strong>Coins</strong> defined by a ScriptableObject, spawned in waves by a pooled coroutine spawner (Modules 2–3, 5)</li>
+                        <li>A <strong>GameManager</strong> singleton with a state machine, score, and a countdown, broadcasting via events (Modules 3–4)</li>
+                        <li>An event-driven <strong>HUD</strong> and game-over screen, with a persisted <strong>high score</strong> (Module 4)</li>
+                        <li>A <strong>performance</strong> pass (pooling, caching) and a <strong>unit test</strong> for the scoring rule (Module 5)</li>
+                    </ul>
+                    <p><strong>Estimated Time:</strong> 150 minutes</p>
+                    <p><strong>Format:</strong> a guided build in five phases. Each references the lesson its ideas came from — treat it as a capstone review as much as a project.</p>
+                </div>
+            </header>
+
+            <!-- Sticky Table of Contents -->
+            <details class="card toc-card" open>
+                <summary aria-label="Toggle table of contents">
+                    <span class="toc-icon" aria-hidden="true">📑</span>
+                    <span class="toc-label">In This Lesson</span>
+                    <span class="toc-chevron" aria-hidden="true">▾</span>
+                </summary>
+                <nav aria-label="Table of Contents">
+                    <ol>
+                        <li><a href="#brief" class="toc-link">The Brief &amp; Architecture</a></li>
+                        <li><a href="#phase1" class="toc-link">Phase 1 — Player &amp; Coins</a></li>
+                        <li><a href="#phase2" class="toc-link">Phase 2 — Data &amp; Pooled Spawner</a></li>
+                        <li><a href="#phase3" class="toc-link">Phase 3 — The GameManager</a></li>
+                        <li><a href="#phase4" class="toc-link">Phase 4 — UI &amp; Save</a></li>
+                        <li><a href="#phase5" class="toc-link">Phase 5 — Polish, Test, Verify</a></li>
+                        <li><a href="#checklist" class="toc-link">Self-Assessment &amp; Quiz</a></li>
+                        <li><a href="#summary" class="toc-link">Course Conclusion</a></li>
+                    </ol>
+                </nav>
+            </details>
+
+            <!-- Section 1: Brief & architecture -->
+            <section id="brief" class="lesson-section">
+                <h2>The Brief &amp; Architecture</h2>
+                <p><strong>Coin Rush:</strong> the player rolls a ball around a walled arena. Coins spawn at random spots; touching one adds its value to the score and it despawns. A 30-second countdown ticks down; at zero, the game ends and shows the final score plus the best score ever (saved to disk). Press a key to play again.</p>
+
+                <p>Before writing code, picture how the pieces connect. Notice the shape from the whole course: <strong>the GameManager broadcasts via events; systems react.</strong> Nothing reaches into the manager except deliberate commands.</p>
+
+                <div class="mermaid">
+                    graph TD
+                    GM["GameManager (singleton)<br/>state · score · countdown"]
+                    P["PlayerController<br/>(input + physics)"]
+                    C["Coin (trigger)<br/>uses CoinData asset"]
+                    SP["CoinSpawner<br/>(coroutine + object pool)"]
+                    HUD["HUD + GameOver UI"]
+                    SV["SaveManager<br/>(high score)"]
+
+                    P -->|"collects"| C
+                    C -->|"AddScore(value)"| GM
+                    SP -->|"spawns / pools"| C
+                    GM -.->|"ScoreChanged / TimeChanged / StateChanged events"| HUD
+                    GM -.->|"StateChanged"| SP
+                    GM -->|"save/load best"| SV
+                    style GM fill:#eff6ff,stroke:#3b82f6,stroke-width:2px
+                    style HUD fill:#f3e8ff,stroke:#8b5cf6,stroke-width:2px
+                    style C fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                </div>
+
+                <div class="card card-accent">
+                    <h4>📖 Scene setup (do this first)</h4>
+                    <p>Create a <strong>Plane</strong> floor with four wall Cubes around the edges (each just needs a Collider). Add a <strong>Sphere</strong> named <code>Player</code> with a <code>Rigidbody</code>, tagged <code>Player</code>. Add empty GameObjects for <code>GameManager</code>, <code>CoinSpawner</code>, and a <strong>Canvas</strong> for UI. A <strong>Coin</strong> is a small Cube/Sphere with a trigger collider, saved as a <strong>prefab</strong> (Lesson 2.3).</p>
+                </div>
+            </section>
+
+            <!-- Section 2: Phase 1 -->
+            <section id="phase1" class="lesson-section">
+                <h2>Phase 1 — Player &amp; Coins</h2>
+                <p><em>Modules 1–2: components, lifecycle, input, physics, triggers.</em></p>
+
+                <p>The player is a physics object: read input in <code>Update</code>, apply force in <code>FixedUpdate</code> (Lessons 1.2, 2.1, 2.2). Cache the Rigidbody in <code>Awake</code> (Lessons 1.3, 5.1).</p>
+
+                <pre><code class="language-csharp">using UnityEngine;
+
+[RequireComponent(typeof(Rigidbody))]
+public class PlayerController : MonoBehaviour
+{
+    [SerializeField] private float moveForce = 12f;
+
+    private Rigidbody body;
+    private Vector2 input;
+
+    void Awake() =&gt; body = GetComponent&lt;Rigidbody&gt;();   // cache (Lesson 1.3 / 5.1)
+
+    void Update()
+    {
+        // Read input every frame so nothing is missed (Lesson 1.2).
+        input.x = Input.GetAxisRaw("Horizontal");
+        input.y = Input.GetAxisRaw("Vertical");
+    }
+
+    void FixedUpdate()
+    {
+        // Apply physics on the fixed step (Lesson 2.2).
+        Vector3 dir = new Vector3(input.x, 0f, input.y);
+        if (dir.sqrMagnitude &gt; 1f) dir.Normalize();     // no fast diagonals (Lesson 2.1)
+        body.AddForce(dir * moveForce);
+    }
+}</code></pre>
+
+                <p>A coin is a <strong>trigger</strong> (Lesson 2.2): when the Player enters, it awards points and despawns. We'll fill in its data and pooling in Phase 2 — for now, the collision shape of the game:</p>
+
+                <pre><code class="language-csharp">using UnityEngine;
+
+[RequireComponent(typeof(Collider))]
+public class Coin : MonoBehaviour
+{
+    private CoinData data;               // assigned by the spawner (Phase 2)
+    private System.Action&lt;Coin&gt; onCollected;   // how to return to the pool (Phase 2)
+
+    public void Init(CoinData data, System.Action&lt;Coin&gt; onCollected)
+    {
+        this.data = data;
+        this.onCollected = onCollected;
+    }
+
+    void OnTriggerEnter(Collider other)
+    {
+        if (!other.CompareTag("Player")) return;   // only the player (Lesson 2.2)
+
+        GameManager.Instance.AddScore(data.value); // command the manager (Lesson 4.1)
+        onCollected?.Invoke(this);                  // back to the pool (Lesson 5.1)
+    }
+}</code></pre>
+
+                <div class="card card-success">
+                    <h4>✅ Already using five lessons</h4>
+                    <p><code>[RequireComponent]</code> and caching (1.3), the Update/FixedUpdate split (1.2, 2.2), input and normalization (2.1), triggers and <code>CompareTag</code> (2.2), and a decoupled "return me" callback instead of <code>Destroy</code> (5.1). One little game object, most of Modules 1–2.</p>
+                </div>
+            </section>
+
+            <!-- Section 3: Phase 2 -->
+            <section id="phase2" class="lesson-section">
+                <h2>Phase 2 — Data &amp; Pooled Spawner</h2>
+                <p><em>Modules 3 &amp; 5: ScriptableObjects, coroutines, object pooling.</em></p>
+
+                <p>Coin stats live in a <strong>ScriptableObject</strong> (Lesson 3.1), so designers can make "SilverCoin" and "GoldCoin" assets with different values without touching code:</p>
+
+                <pre><code class="language-csharp">using UnityEngine;
+
+[CreateAssetMenu(fileName = "CoinData", menuName = "CoinRush/Coin Data")]
+public class CoinData : ScriptableObject
+{
+    public int value = 1;
+    public Color color = Color.yellow;
+}</code></pre>
+
+                <p>The spawner ties together three course ideas: a <strong>coroutine</strong> spawns on an interval (Lesson 3.3), an <strong>object pool</strong> reuses coins instead of churning them (Lesson 5.1), and it only runs while the game is in the <strong>Playing</strong> state (Lesson 4.1):</p>
+
+                <pre><code class="language-csharp">using System.Collections;
+using UnityEngine;
+using UnityEngine.Pool;
+
+public class CoinSpawner : MonoBehaviour
+{
+    [SerializeField] private Coin coinPrefab;
+    [SerializeField] private CoinData coinData;
+    [SerializeField] private float interval = 0.75f;
+    [SerializeField] private Vector2 areaHalfSize = new(8f, 8f);
+
+    private ObjectPool&lt;Coin&gt; pool;
+
+    void Awake()
+    {
+        pool = new ObjectPool&lt;Coin&gt;(
+            () =&gt; Instantiate(coinPrefab),
+            c =&gt; c.gameObject.SetActive(true),
+            c =&gt; c.gameObject.SetActive(false),
+            c =&gt; Destroy(c.gameObject),
+            defaultCapacity: 30);
+    }
+
+    // Started/stopped by the GameManager's state (Phase 3).
+    public void BeginSpawning() =&gt; StartCoroutine(SpawnLoop());
+    public void StopSpawning()  =&gt; StopAllCoroutines();
+
+    private IEnumerator SpawnLoop()
+    {
+        var wait = new WaitForSeconds(interval);   // cached (Lesson 3.3 / 5.1)
+        while (true)
+        {
+            SpawnOne();
+            yield return wait;
+        }
+    }
+
+    private void SpawnOne()
+    {
+        Coin coin = pool.Get();                    // reused, no GC (Lesson 5.1)
+        float x = Random.Range(-areaHalfSize.x, areaHalfSize.x);
+        float z = Random.Range(-areaHalfSize.y, areaHalfSize.y);
+        coin.transform.position = new Vector3(x, 0.5f, z);
+        coin.Init(coinData, ReturnCoin);          // give it its data + return path
+    }
+
+    private void ReturnCoin(Coin coin) =&gt; pool.Release(coin);
+}</code></pre>
+
+                <div class="card card-warning">
+                    <h4>⚠️ Reset pooled state</h4>
+                    <p>Because coins are reused, always re-set position (and any other state) in <code>SpawnOne</code>/the pool's <em>get</em> callback — a recycled coin remembers where it was. This is the "reset on get" rule from Lesson 5.1. (<code>Random.Range</code> here is only ever called at runtime, so it's fine.)</p>
+                </div>
+            </section>
+
+            <!-- Section 4: Phase 3 -->
+            <section id="phase3" class="lesson-section">
+                <h2>Phase 3 — The GameManager</h2>
+                <p><em>Modules 3–4: singleton, state machine, events, coroutines.</em></p>
+
+                <p>The heart of the game. A <strong>singleton</strong> (Lesson 4.1) that owns the <strong>state machine</strong>, <strong>score</strong>, and a <strong>countdown coroutine</strong> (Lesson 3.3), and <strong>broadcasts</strong> everything via events (Lesson 3.2) so the UI and spawner react without being referenced:</p>
+
+                <pre><code class="language-csharp">using System;
+using System.Collections;
+using UnityEngine;
+
+public enum GameState { Ready, Playing, GameOver }
+
+public class GameManager : MonoBehaviour
+{
+    public static GameManager Instance { get; private set; }
+
+    [SerializeField] private CoinSpawner spawner;
+    [SerializeField] private float roundSeconds = 30f;
+
+    public GameState State { get; private set; } = GameState.Ready;
+    public int Score { get; private set; }
+    public int TimeLeft { get; private set; }
+
+    // Announcements (Lesson 3.2) — UI subscribes to these.
+    public event Action&lt;int&gt; ScoreChanged;
+    public event Action&lt;int&gt; TimeChanged;
+    public event Action&lt;GameState&gt; StateChanged;
+
+    void Awake()
+    {
+        if (Instance != null &amp;&amp; Instance != this) { Destroy(gameObject); return; }
+        Instance = this;                       // singleton (Lesson 4.1)
+    }
+
+    void Start() =&gt; SetState(GameState.Ready);
+
+    void Update()
+    {
+        // Space starts a new round from Ready or GameOver.
+        if (Input.GetKeyDown(KeyCode.Space) &amp;&amp; State != GameState.Playing)
+            StartRound();
+    }
+
+    public void AddScore(int amount)
+    {
+        if (State != GameState.Playing) return;
+        Score += amount;
+        ScoreChanged?.Invoke(Score);           // broadcast (Lesson 3.2)
+    }
+
+    private void StartRound()
+    {
+        Score = 0;
+        ScoreChanged?.Invoke(Score);
+        SetState(GameState.Playing);
+        spawner.BeginSpawning();
+        StartCoroutine(Countdown());           // coroutine timer (Lesson 3.3)
+    }
+
+    private IEnumerator Countdown()
+    {
+        TimeLeft = Mathf.CeilToInt(roundSeconds);
+        var oneSecond = new WaitForSeconds(1f);
+        while (TimeLeft &gt; 0)
+        {
+            TimeChanged?.Invoke(TimeLeft);
+            yield return oneSecond;
+            TimeLeft--;
+        }
+        TimeChanged?.Invoke(0);
+        EndRound();
+    }
+
+    private void EndRound()
+    {
+        spawner.StopSpawning();
+        SetState(GameState.GameOver);
+    }
+
+    private void SetState(GameState newState)
+    {
+        State = newState;
+        StateChanged?.Invoke(newState);
+    }
+}</code></pre>
+
+                <div class="card card-success">
+                    <h4>✅ Broadcast out, command in</h4>
+                    <p>The manager <em>commands</em> the spawner directly (it owns the round) but <em>announces</em> score, time, and state through events — the exact balance from Lesson 4.1. The HUD (next) never appears here; it just listens. Add a leaderboard, a sound, a particle burst on score — each is a new subscriber, and this class never changes.</p>
+                </div>
+            </section>
+
+            <!-- Section 5: Phase 4 -->
+            <section id="phase4" class="lesson-section">
+                <h2>Phase 4 — UI &amp; Save</h2>
+                <p><em>Module 4: event-driven UI and persistence.</em></p>
+
+                <p>The HUD subscribes to the manager's events (Lessons 3.2, 4.2) and updates only on change — no polling, no coupling. It also shows/hides the game-over panel based on state, and persists the high score with <code>PlayerPrefs</code> (Lesson 4.3):</p>
+
+                <pre><code class="language-csharp">using UnityEngine;
+using TMPro;
+
+public class HUD : MonoBehaviour
+{
+    [SerializeField] private TMP_Text scoreLabel;
+    [SerializeField] private TMP_Text timeLabel;
+    [SerializeField] private GameObject gameOverPanel;
+    [SerializeField] private TMP_Text resultLabel;
+
+    void OnEnable()
+    {
+        var gm = GameManager.Instance;
+        gm.ScoreChanged += OnScore;            // subscribe (Lesson 3.2)
+        gm.TimeChanged  += OnTime;
+        gm.StateChanged += OnState;
+    }
+
+    void OnDisable()
+    {
+        var gm = GameManager.Instance;
+        if (gm == null) return;
+        gm.ScoreChanged -= OnScore;            // mirror unsubscribe (Lesson 3.2)
+        gm.TimeChanged  -= OnTime;
+        gm.StateChanged -= OnState;
+    }
+
+    private void OnScore(int score) =&gt; scoreLabel.text = $"Score: {score}";
+    private void OnTime(int seconds) =&gt; timeLabel.text = $"Time: {seconds}";
+
+    private void OnState(GameState state)
+    {
+        bool over = state == GameState.GameOver;
+        gameOverPanel.SetActive(over);
+        if (over) ShowResult();
+    }
+
+    private void ShowResult()
+    {
+        int score = GameManager.Instance.Score;
+        int best = PlayerPrefs.GetInt("HighScore", 0);   // load (Lesson 4.3)
+        if (score &gt; best)
+        {
+            best = score;
+            PlayerPrefs.SetInt("HighScore", best);       // save new record
+            PlayerPrefs.Save();
+        }
+        resultLabel.text = $"Final: {score}\nBest: {best}\n\nPress Space to play again";
+    }
+}</code></pre>
+
+                <div class="card card-info">
+                    <h4>💡 Why the null-guard in <code>OnDisable</code>?</h4>
+                    <p>When you stop Play mode, objects are destroyed in an undefined order; the <code>GameManager</code> may already be gone when the HUD's <code>OnDisable</code> runs. The <code>if (gm == null) return;</code> guard (Unity's overloaded <code>==</code>, Lesson 1.3) avoids a teardown error. Small detail, real robustness — exactly the kind of thing Lesson 5.2 teaches you to anticipate.</p>
+                </div>
+
+                <p>For a full save game (position, level, inventory) you'd use the JSON <code>SaveManager</code> from Lesson 4.3. For a single high-score integer, <code>PlayerPrefs</code> is the right, simpler tool — choosing correctly between them is the lesson.</p>
+            </section>
+
+            <!-- Section 6: Phase 5 -->
+            <section id="phase5" class="lesson-section">
+                <h2>Phase 5 — Polish, Test, Verify</h2>
+                <p><em>Module 5: performance, testing, debugging.</em></p>
+
+                <p><strong>Performance (Lesson 5.1).</strong> Do a Profiler pass while playing and watch the <em>GC Alloc</em> column. The design is already allocation-light: coins are pooled, references cached, UI updates only on events, and the wait objects are cached. If a spike appears, trace it — that's the workflow, not a guess.</p>
+
+                <p><strong>Testing (Lesson 5.2).</strong> The scoring logic is worth locking down. Pull it into a pure C# rule and unit-test it in Edit Mode — no scene, instant feedback:</p>
+
+                <pre><code class="language-csharp">// Pure logic — no MonoBehaviour, so it's trivially testable (Lesson 5.2).
+public class ScoreRules
+{
+    // Late coins (last 10 seconds) are worth double — a bit of game feel.
+    public int Points(int coinValue, int secondsLeft)
+        =&gt; secondsLeft &lt;= 10 ? coinValue * 2 : coinValue;
+}</code></pre>
+
+                <pre><code class="language-csharp">using NUnit.Framework;
+
+public class ScoreRulesTests
+{
+    [Test]
+    public void EarlyCoin_NormalValue()
+    {
+        Assert.AreEqual(5, new ScoreRules().Points(5, secondsLeft: 25));
+    }
+
+    [Test]
+    public void LateCoin_DoubleValue()
+    {
+        Assert.AreEqual(10, new ScoreRules().Points(5, secondsLeft: 8));
+    }
+}</code></pre>
+
+                <p>Then wire the rule into <code>AddScore</code> (<code>Score += rules.Points(amount, TimeLeft);</code>) — logic in a plain class, MonoBehaviour as glue, exactly the separation from Lesson 5.2.</p>
+
+                <p><strong>Debugging (Lesson 5.2).</strong> If a coin isn't collected, the checklist writes itself: Is the Player tagged <code>Player</code>? Is the coin's collider a trigger? Does the Player have a Rigidbody (the "one must have a Rigidbody" rule, Lesson 2.2)? Add a <code>Debug.Log($"hit {other.name}", this)</code> in <code>OnTriggerEnter</code> to see what's actually touching. Draw the spawn area with a Gizmo to confirm placement.</p>
+
+                <div class="card card-success">
+                    <h4>✅ You built a whole game loop</h4>
+                    <p>Ready → Playing → GameOver, with spawning, collecting, scoring, a timer, UI, a saved best, pooling, and a test. Every module of this course is in there, working together — which is exactly what real Unity development feels like: not one big trick, but many small, well-understood pieces composed cleanly.</p>
+                </div>
+            </section>
+
+            <!-- Section 7: Checklist & Quiz -->
+            <section id="checklist" class="lesson-section">
+                <h2>Self-Assessment &amp; Quiz</h2>
+
+                <div class="card card-info">
+                    <h3>🏁 Build Checklist</h3>
+                    <p>Tick these off — each maps to a concept you now own:</p>
+                    <ul>
+                        <li>☐ Player rolls with physics; input read in <code>Update</code>, force in <code>FixedUpdate</code> (M1–2)</li>
+                        <li>☐ Coins are triggers that only react to the <code>Player</code> tag (M2)</li>
+                        <li>☐ Coin stats come from a <code>CoinData</code> ScriptableObject asset (M3)</li>
+                        <li>☐ A coroutine spawns coins on an interval, from an <code>ObjectPool</code> (M3, M5)</li>
+                        <li>☐ A <code>GameManager</code> singleton runs a state machine + countdown and raises events (M3–4)</li>
+                        <li>☐ The HUD updates from events (not polling) and shows game over (M4)</li>
+                        <li>☐ The high score persists across sessions (M4)</li>
+                        <li>☐ Profiler shows near-0 B/frame; a scoring rule has a passing unit test (M5)</li>
+                    </ul>
+                    <p>If every box is checked, you've demonstrated the entire course in one project. 🎉</p>
+                </div>
+
+                <div class="card card-info">
+                    <h3>🚀 Extend It (optional challenges)</h3>
+                    <ul>
+                        <li><strong>Enemies:</strong> spawn hazards (also pooled) that end the round on contact — reuse the trigger + state pattern.</li>
+                        <li><strong>Coin variety:</strong> make Gold and Silver <code>CoinData</code> assets with different values/colors; have the spawner pick randomly (data-driven design, Lesson 3.1).</li>
+                        <li><strong>Audio:</strong> add an <code>AudioManager</code> that subscribes to <code>ScoreChanged</code> and plays a "ding" — a new event subscriber, no manager changes (Lesson 3.2).</li>
+                        <li><strong>Full save:</strong> swap <code>PlayerPrefs</code> for the JSON <code>SaveManager</code> and persist a top-5 leaderboard (Lesson 4.3).</li>
+                    </ul>
+                </div>
+
+                <!-- Quiz Section -->
+                <div class="card quiz-container">
+                    <h3>🎯 Integration Quiz</h3>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 1:</strong> In Coin Rush, how does the HUD learn the score changed?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="Polling in Update is the wasteful pattern this course steers you away from.">
+                                A) It reads <code>GameManager.Instance.Score</code> every frame in <code>Update</code>.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! The GameManager raises ScoreChanged; the HUD subscribes and updates only on change — decoupled and allocation-light.">
+                                B) It subscribes to the manager's <code>ScoreChanged</code> event and updates on change.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="The Coin talks to the GameManager, not directly to the HUD.">
+                                C) Each Coin directly calls a method on the HUD.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 2:</strong> Why are coins pooled instead of <code>Instantiate</code>/<code>Destroy</code>ed each time?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="Pooling doesn't change how triggers work.">
+                                A) Pooling is required for <code>OnTriggerEnter</code> to fire.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! Frequent spawn/despawn creates GC garbage and frame spikes; pooling reuses objects to avoid that (Lesson 5.1).">
+                                B) Frequent spawn/despawn generates GC garbage and frame spikes; pooling reuses objects.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="ScriptableObjects hold data; they're unrelated to why we pool.">
+                                C) Because coins use a ScriptableObject.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 3:</strong> A coin's <code>OnTriggerEnter</code> never fires when the player rolls over it. What's the most likely cause?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="The ScriptableObject value doesn't affect collision detection.">
+                                A) The <code>CoinData</code> value is set to 0.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! Triggers need at least one Rigidbody in the pair and a trigger collider, and the player must be tagged 'Player' for the guard to pass (Lesson 2.2).">
+                                B) The player isn't tagged <code>Player</code>, the collider isn't a trigger, or neither object has a Rigidbody.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="The countdown coroutine is unrelated to trigger detection.">
+                                C) The countdown coroutine isn't running.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section 8: Course conclusion -->
+            <section id="summary" class="lesson-section">
+                <h2>Course Conclusion</h2>
+
+                <div class="card card-success">
+                    <h3>🎓 What You've Learned</h3>
+                    <p>Across five modules and fifteen lessons, you went from "what is a MonoBehaviour?" to shipping a complete, well-architected game loop:</p>
+                    <ul>
+                        <li><strong>Module 1 — Unity's C# Model:</strong> components, the event lifecycle, and wiring objects together.</li>
+                        <li><strong>Module 2 — Gameplay Scripting:</strong> input, movement, physics, collisions, spawning, and destroying.</li>
+                        <li><strong>Module 3 — Structuring Game Code:</strong> ScriptableObject data, decoupled events, and time-based logic with coroutines.</li>
+                        <li><strong>Module 4 — Systems and Managers:</strong> singletons and state, UI scripting, and saving/loading.</li>
+                        <li><strong>Module 5 — Quality and Performance:</strong> avoiding GC, pooling, debugging, testing — and this capstone.</li>
+                    </ul>
+                </div>
+
+                <div class="card card-accent">
+                    <h4>🧭 The through-line</h4>
+                    <p>If one idea unifies the course, it's this: <strong>compose small, well-understood pieces and let them communicate cleanly.</strong> Components over inheritance, events over hard references, data in assets, logic in testable classes, managers that announce rather than command. Master that mindset and any Unity system — however large — becomes a set of parts you can reason about one at a time.</p>
+                </div>
+
+                <h3>📚 Where to Go Next</h3>
+                <ul>
+                    <li><a href="https://learn.unity.com/" target="_blank" rel="noopener">Unity Learn — official tutorials and pathways</a></li>
+                    <li><a href="https://docs.unity3d.com/Manual/index.html" target="_blank" rel="noopener">Unity Manual &amp; Scripting Reference</a></li>
+                    <li><a href="https://unity.com/how-to" target="_blank" rel="noopener">Unity — architecture &amp; best-practice guides</a></li>
+                    <li>Ray's other courses: <a href="https://rays-csharp.netlify.app/" target="_blank" rel="noopener">Introduction to C#</a>, <a href="https://rays-csharp-int.netlify.app/" target="_blank" rel="noopener">Intermediate C#</a>, <a href="https://rays-csharp-adv.netlify.app/" target="_blank" rel="noopener">Advanced C#</a>.</li>
+                </ul>
+
+                <h3>🚀 Keep Building</h3>
+                <p>The best next step is to make something small and finish it. Take Coin Rush and add one feature. Then start a fresh idea. Every game you complete teaches more than a dozen tutorials — and you now have the C# scripting foundation to build whatever you imagine.</p>
+
+                <!-- Encouragement Card -->
+                <div class="card card-accent" style="text-align: center; padding: 2rem;">
+                    <h3>🎉 Congratulations — course complete!</h3>
+                    <p>You've mastered C# scripting in Unity, from the component model to a shipped game loop. Now go make something amazing. 🚀</p>
+                </div>
+            </section>
+
+            <!-- Lesson Navigation -->
+            <nav class="lesson-nav" aria-label="Lesson Navigation">
+                <a href="lesson_14.html" class="prev-lesson">← Previous: Lesson 5.2 — Debugging and the Unity Test Framework</a>
+                <a href="index.html" class="home-link">🏠 Course Home</a>
+                <a href="index.html" class="next-lesson">🎓 Back to Course Home →</a>
+            </nav>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+        <p>&copy; 2026 Ray de la Paz. All rights reserved.</p>
+        <div class="footer-links">
+            <a href="https://rays-home.netlify.app/">Ray's House of Fun</a>
+            <a href="https://rays-home.netlify.app/contact">Contact</a>
+            <a href="#" id="print-button">Print Page</a>
+        </div>
+        <p><small>Press <kbd>?</kbd> for keyboard shortcuts</small></p>
+    </footer>
+
+    <!-- JavaScript -->
+    <script src="js/clipboard.js"></script>
+    <script src="js/course-enhancements.js"></script>
+</body>
+</html>

@@ -19,7 +19,12 @@ existing C# courses (`csharp`, `csharp_int`, `csharp_adv`).
 - [x] `git init` done
 - [x] `course-config.json` written (5 modules × 3 = 15 lessons)
 - [x] `index.html` written (homepage with all 5 module cards, prerequisites, resources)
-- [ ] Lessons 01–15 — **not yet written** (resume here)
+- [x] **Lessons 01–15 — ALL WRITTEN & VALIDATED** (2026-08-07). 31/31 Mermaid diagrams pass the
+  jsdom+mermaid checker; nav chain index→01→…→15→index verified; no `[placeholders]` or `language-python`.
+  Code accuracy grounded against the live Unity 6 API via MCP (e.g. `linearVelocity`, `Awaitable`,
+  `ObjectPool<T>`, `Instantiate<T>`, `TryGetComponent`). Capstone = "Coin Rush", integrating all 5 modules.
+- [ ] Deploy to Netlify (suggested name `rays-csharp-unity`)
+- [ ] Add links on `rayhome/index.html` + `rayhome/search.html` under "Computer Programming Topics"
 
 ## Syllabus (15 lessons)
 
@@ -73,6 +78,7 @@ GC/pooling/performance (advanced) — recontextualized for Unity.
 
 ## To resume
 
-Next action: build **Lesson 1.1 (`lesson_01.html`) — MonoBehaviour and the Component Model**,
-then pause for review. See the memory note `csharp-course-project` for the broader context and
-`unity-mcp-connection` for the Unity MCP setup state.
+All 15 lessons are complete. Next action is **deployment**: publish to Netlify (suggested name
+`rays-csharp-unity`), then add links on `rayhome/index.html` + `rayhome/search.html` under
+"Computer Programming Topics" (next to the other three C# courses). See the memory note
+`csharp-course-project` for the broader context and `unity-mcp-connection` for the Unity MCP setup state.

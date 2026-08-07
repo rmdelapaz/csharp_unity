@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Coordinate a whole game with managers — the singleton pattern in Unity, a game state machine, DontDestroyOnLoad persistence, and scene management with SceneManager.">
+    <meta name="author" content="Ray de la Paz">
+    <title>Lesson 4.1: Game State and Managers - C# Scripting in Unity</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="icon" type="image/png" href="favicon.png">
+    <!-- Mermaid — initialized by course-enhancements.js for theme awareness -->
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        window.__mermaid = mermaid;
+        // Initial config — JS will re-init on theme change
+        const isDark = localStorage.getItem('theme') === 'dark' ||
+            (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: isDark ? 'dark' : 'default',
+            themeVariables: isDark
+                ? { primaryColor: '#334155', primaryTextColor: '#e2e8f0', primaryBorderColor: '#6366f1', lineColor: '#94a3b8', secondaryColor: '#1e293b', tertiaryColor: '#0f172a' }
+                : { primaryColor: '#eff6ff', primaryTextColor: '#1e293b', primaryBorderColor: '#3b82f6', lineColor: '#64748b', secondaryColor: '#f8fafc', tertiaryColor: '#f1f5f9' }
+        });
+    </script>
+</head>
+<body>
+    <!-- Skip to main content for accessibility -->
+    <a href="#main-content" class="skip-to-main">Skip to main content</a>
+
+
+    <!-- Navigation -->
+    <nav class="main-nav">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo">C# Scripting in Unity</a>
+            <button id="mobile-menu-toggle" class="mobile-menu-toggle" aria-expanded="false" aria-controls="nav-links">
+                ☰
+            </button>
+            <div class="nav-links" id="nav-links">
+                <a href="index.html">Home</a>
+                <a href="index.html#modules">All Modules</a>
+                <span class="nav-divider"></span>
+                <a href="https://rays-home.netlify.app/">Ray's House of Fun</a>
+                <a href="https://rays-home.netlify.app/contact">Contact</a>
+                <button id="theme-toggle" aria-label="Toggle dark/light mode">🌙</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Breadcrumb -->
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+        <ul>
+            <li><a href="index.html">Home</a></li>
+            <li><a href="index.html#modules">Module 4</a></li>
+            <li aria-current="page">Lesson 4.1: Game State and Managers</li>
+        </ul>
+    </nav>
+
+    <!-- Main Content -->
+    <main id="main-content">
+        <div class="container">
+            <!-- Lesson Header -->
+            <header>
+                <h1>📝 Lesson 4.1: Game State and Managers</h1>
+                <p class="lead">Somewhere, something has to know the score, whether the game is paused, and which level loads next. That's a <strong>manager</strong> — a central coordinator. This lesson covers the manager and <strong>singleton</strong> patterns, a clean <strong>game state machine</strong>, keeping managers alive across scenes, and loading scenes from code.</p>
+
+                <!-- Learning objectives -->
+                <div class="card card-info">
+                    <h2>🎯 Learning Objectives</h2>
+                    <p>By the end of this lesson, you will be able to:</p>
+                    <ul>
+                        <li>Explain the role of a <strong>manager</strong> and implement the Unity <strong>singleton</strong> pattern</li>
+                        <li>Persist a manager across scene loads with <code>DontDestroyOnLoad</code></li>
+                        <li>Model game flow as a <strong>state machine</strong> (MainMenu → Playing → Paused → GameOver)</li>
+                        <li>Pause the game with <code>Time.timeScale</code> and react to state changes</li>
+                        <li>Load and switch scenes with <code>SceneManager</code> (single &amp; additive)</li>
+                        <li>Weigh singletons against events (Lesson 3.2) and avoid their pitfalls</li>
+                    </ul>
+                    <p><strong>Estimated Time:</strong> 60 minutes</p>
+                    <p><strong>Project:</strong> A <code>GameManager</code> singleton that tracks state and score, persists across scenes, and drives pause and restart.</p>
+                </div>
+            </header>
+
+            <!-- Sticky Table of Contents -->
+            <details class="card toc-card" open>
+                <summary aria-label="Toggle table of contents">
+                    <span class="toc-icon" aria-hidden="true">📑</span>
+                    <span class="toc-label">In This Lesson</span>
+                    <span class="toc-chevron" aria-hidden="true">▾</span>
+                </summary>
+                <nav aria-label="Table of Contents">
+                    <ol>
+                        <li><a href="#introduction" class="toc-link">What Is a Manager?</a></li>
+                        <li><a href="#singleton" class="toc-link">The Singleton Pattern</a></li>
+                        <li><a href="#persist" class="toc-link">Surviving Scene Loads</a></li>
+                        <li><a href="#statemachine" class="toc-link">A Game State Machine</a></li>
+                        <li><a href="#scenes" class="toc-link">Scene Management</a></li>
+                        <li><a href="#pitfalls" class="toc-link">Singleton Pitfalls</a></li>
+                        <li><a href="#exercise" class="toc-link">Exercise &amp; Quiz</a></li>
+                        <li><a href="#summary" class="toc-link">Summary</a></li>
+                    </ol>
+                </nav>
+            </details>
+
+            <!-- Section 1: Manager -->
+            <section id="introduction" class="lesson-section">
+                <h2>What Is a Manager?</h2>
+                <p>As a game grows, some responsibilities don't belong to any single GameObject. "The current score" isn't the player's job or the UI's job — it's game-wide state. A <strong>manager</strong> is a component that owns one such cross-cutting concern and offers a central place to read and change it.</p>
+
+                <div class="card card-accent">
+                    <h4>📖 Definition</h4>
+                    <p>A <strong>manager</strong> is a coordinating MonoBehaviour responsible for a global concern — <code>GameManager</code> (overall state, score), <code>AudioManager</code> (music/SFX), <code>SceneLoader</code> (transitions), <code>SaveManager</code> (persistence). Typically there's exactly <em>one</em> of each in the game, which is why managers so often become singletons.</p>
+                </div>
+
+                <p>The challenge: if there's one <code>GameManager</code>, how does the player, the UI, an enemy — anyone — <em>reach</em> it? You could wire a <code>[SerializeField]</code> reference into every script (Lesson 1.3), but that's tedious for something everything needs. The <strong>singleton</strong> pattern gives one globally-reachable access point.</p>
+            </section>
+
+            <!-- Section 2: Singleton -->
+            <section id="singleton" class="lesson-section">
+                <h2>The Singleton Pattern</h2>
+                <p>A <strong>singleton</strong> guarantees a class has exactly one instance and exposes it through a static <code>Instance</code> property, so any script can call <code>GameManager.Instance.AddScore(10)</code> from anywhere.</p>
+
+                <pre><code class="language-csharp">using UnityEngine;
+
+public class GameManager : MonoBehaviour
+{
+    // The single, globally-accessible instance.
+    public static GameManager Instance { get; private set; }
+
+    public int Score { get; private set; }
+
+    void Awake()
+    {
+        // Enforce a single instance: if one already exists, destroy this duplicate.
+        if (Instance != null &amp;&amp; Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+        Instance = this;
+    }
+
+    public void AddScore(int amount)
+    {
+        Score += amount;
+        Debug.Log($"Score: {Score}");
+    }
+}</code></pre>
+
+                <div class="mermaid">
+                    graph TD
+                    GM["GameManager.Instance<br/>(the one manager)"]
+                    P["Player"] -->|"AddScore(10)"| GM
+                    E["Enemy"] -->|"AddScore(50)"| GM
+                    U["ScoreUI"] -->|"reads Score"| GM
+                    style GM fill:#eff6ff,stroke:#3b82f6,stroke-width:2px
+                    style P fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                    style E fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                </div>
+
+                <div class="card card-info">
+                    <h4>💡 Why register in <code>Awake</code>?</h4>
+                    <p>From Lesson 1.2: all <code>Awake</code> calls run before any <code>Start</code>. Registering <code>Instance = this</code> in <code>Awake</code> guarantees the singleton is ready before any other script's <code>Start</code> tries to use it. That's the two-phase startup rule paying off — set yourself up in <code>Awake</code>, use others in <code>Start</code>.</p>
+                </div>
+
+                <div class="card card-warning">
+                    <h4>⚠️ The duplicate guard matters</h4>
+                    <p>The <code>if (Instance != null)</code> check destroys accidental duplicates — crucial once you add <code>DontDestroyOnLoad</code> (next), because reloading a scene that contains the manager would otherwise create a second one. Expose <code>Instance</code> with a <code>private set</code> so outside code can read it but never reassign it.</p>
+                </div>
+            </section>
+
+            <!-- Section 3: Persist -->
+            <section id="persist" class="lesson-section">
+                <h2>Surviving Scene Loads</h2>
+                <p>By default, loading a new scene destroys every GameObject in the old one — including your manager. But score, settings, and audio should carry from the menu into the level and between levels. <code>DontDestroyOnLoad</code> marks an object to survive scene changes.</p>
+
+                <pre><code class="language-csharp">void Awake()
+{
+    if (Instance != null &amp;&amp; Instance != this)
+    {
+        Destroy(gameObject);
+        return;
+    }
+    Instance = this;
+    DontDestroyOnLoad(gameObject);   // this manager persists across all scenes
+}</code></pre>
+
+                <div class="mermaid">
+                    graph LR
+                    MENU["Main Menu scene"] -->|"Load Level 1"| L1["Level 1 scene"]
+                    L1 -->|"Load Level 2"| L2["Level 2 scene"]
+                    GM["GameManager (DontDestroyOnLoad)"] -.->|"survives"| MENU
+                    GM -.->|"survives"| L1
+                    GM -.->|"survives"| L2
+                    style GM fill:#eff6ff,stroke:#3b82f6,stroke-width:2px
+                </div>
+
+                <div class="card card-success">
+                    <h4>✅ The persistent-singleton recipe</h4>
+                    <p>Put the manager in your <em>first</em> scene, register <code>Instance</code> in <code>Awake</code>, guard against duplicates, and call <code>DontDestroyOnLoad(gameObject)</code>. Now it's a single object that lives for the whole session and is reachable everywhere via <code>Instance</code>. The duplicate guard is what stops a second copy appearing if you return to the first scene.</p>
+                </div>
+
+                <blockquote>
+                    <strong>⚠️ Important:</strong> <code>DontDestroyOnLoad</code> only works on <em>root</em> GameObjects. If your manager is a child of another object, it won't persist — Unity even warns you. Keep managers at the scene root.
+                </blockquote>
+            </section>
+
+            <!-- Section 4: State machine -->
+            <section id="statemachine" class="lesson-section">
+                <h2>A Game State Machine</h2>
+                <p>Games move through distinct <em>states</em> — a main menu, active play, a pause screen, game over — and each allows different things. Scattering <code>bool isPaused</code>, <code>bool isGameOver</code> flags everywhere quickly becomes a tangle of impossible combinations. A <strong>state machine</strong> models this cleanly with a single <code>enum</code>.</p>
+
+                <pre><code class="language-csharp">public enum GameState { MainMenu, Playing, Paused, GameOver }</code></pre>
+
+                <div class="mermaid">
+                    stateDiagram-v2
+                    [*] --> MainMenu
+                    MainMenu --> Playing: Start
+                    Playing --> Paused: Pause
+                    Paused --> Playing: Resume
+                    Playing --> GameOver: Player dies
+                    GameOver --> MainMenu: Restart
+                    Paused --> MainMenu: Quit
+                </div>
+
+                <p>The manager holds the current state, exposes a method to change it, and raises an event (Lesson 3.2) so UI and systems react — without the manager knowing about them:</p>
+
+                <pre><code class="language-csharp">using System;
+using UnityEngine;
+
+public class GameManager : MonoBehaviour
+{
+    public static GameManager Instance { get; private set; }
+
+    public GameState State { get; private set; } = GameState.MainMenu;
+    public event Action&lt;GameState&gt; StateChanged;   // announce transitions
+
+    void Awake()
+    {
+        if (Instance != null &amp;&amp; Instance != this) { Destroy(gameObject); return; }
+        Instance = this;
+        DontDestroyOnLoad(gameObject);
+    }
+
+    public void SetState(GameState newState)
+    {
+        if (State == newState) return;
+        State = newState;
+
+        // Pause freezes time-based logic; WaitForSeconds &amp; physics stop (Lesson 3.3 / 1.2).
+        Time.timeScale = (newState == GameState.Paused) ? 0f : 1f;
+
+        StateChanged?.Invoke(newState);   // let listeners react
+    }
+}</code></pre>
+
+                <div class="card card-info">
+                    <h4>💡 <code>Time.timeScale</code> is the pause switch</h4>
+                    <p>Setting <code>Time.timeScale = 0</code> freezes <code>Time.deltaTime</code>, physics, and <code>WaitForSeconds</code> — most gameplay halts without any per-object code. Set it back to <code>1</code> to resume. Remember (Lesson 3.3): menu animations that must run while paused should use <em>unscaled</em> time or <code>WaitForSecondsRealtime</code>.</p>
+                </div>
+            </section>
+
+            <!-- Section 5: Scene management -->
+            <section id="scenes" class="lesson-section">
+                <h2>Scene Management</h2>
+                <p>Loading levels, returning to the menu, restarting after game over — all handled by the <code>SceneManager</code> class in the <code>UnityEngine.SceneManagement</code> namespace.</p>
+
+                <pre><code class="language-csharp">using UnityEngine;
+using UnityEngine.SceneManagement;   // required for SceneManager
+
+public class SceneFlow : MonoBehaviour
+{
+    public void LoadLevel(string sceneName) =&gt; SceneManager.LoadScene(sceneName);
+
+    public void Restart()
+    {
+        // Reload the scene that's currently active.
+        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+    }
+
+    public void QuitToMenu() =&gt; SceneManager.LoadScene("MainMenu");
+}</code></pre>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>Call</th><th>Effect</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td><code>LoadScene("Level1")</code></td><td>Replaces the current scene(s) with the named one.</td></tr>
+                            <tr><td><code>LoadScene(index)</code></td><td>Same, by build index (from <em>Build Settings</em>).</td></tr>
+                            <tr><td><code>LoadScene(name, LoadSceneMode.Additive)</code></td><td>Loads a scene <em>alongside</em> the current one (streaming, overlays).</td></tr>
+                            <tr><td><code>LoadSceneAsync(...)</code></td><td>Loads in the background so you can show a progress bar (pairs with coroutines/async, Lesson 3.3).</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="card card-warning">
+                    <h4>⚠️ Scenes must be in Build Settings</h4>
+                    <p><code>LoadScene</code> can only load scenes added to <em>File → Build Settings → Scenes In Build</em>. A scene that exists in your Project but isn't in that list fails at runtime. Also: resetting <code>Time.timeScale = 1</code> when leaving a paused state is essential — load a scene while <code>timeScale</code> is still <code>0</code> and the new scene appears frozen.</p>
+                </div>
+
+                <blockquote>
+                    <strong>💡 Additive scenes and managers:</strong> a common architecture keeps managers in a small persistent "bootstrap" scene loaded additively, with levels swapped in and out around it. Combined with <code>DontDestroyOnLoad</code>, this cleanly separates "systems that live forever" from "content that comes and goes."</p>
+                </blockquote>
+            </section>
+
+            <!-- Section 6: Pitfalls -->
+            <section id="pitfalls" class="lesson-section">
+                <h2>Singleton Pitfalls</h2>
+                <p>Singletons are convenient — maybe <em>too</em> convenient. Because <code>Instance</code> is reachable from anywhere, it's tempting to route everything through it, recreating the tight coupling Lesson 3.2 warned against. Used well, singletons and events complement each other.</p>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>Pitfall</th><th>Why it hurts</th><th>Mitigation</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Global access everywhere</td><td>Everything depends on the singleton — hard to reuse or reason about</td><td>Let the manager <em>raise events</em>; listeners react (don't have listeners poll the singleton)</td></tr>
+                            <tr><td>Hidden dependencies</td><td><code>GameManager.Instance</code> buried in a method isn't visible in the Inspector</td><td>Prefer a <code>[SerializeField]</code> reference when a specific object is known</td></tr>
+                            <tr><td>Hard to test</td><td>Static state persists between tests</td><td>Keep managers thin; put logic in plain, testable classes (Lesson 5.2)</td></tr>
+                            <tr><td>Too many managers</td><td>A "GodManager" that does everything</td><td>One manager per concern; split responsibilities</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="card card-success">
+                    <h4>✅ A healthy balance</h4>
+                    <p>Use a singleton for genuinely global, single-instance services (the <em>game</em> manager, audio, scene flow). Have it <strong>broadcast state changes via events</strong> so most systems react without reaching back in. Reserve direct <code>Instance</code> calls for deliberate commands ("add score", "load level"). That mix keeps a central authority <em>and</em> loose coupling.</p>
+                </div>
+
+                <blockquote>
+                    <strong>💡 Rule of thumb:</strong> if you find <em>everything</em> calling <code>Instance</code>, you've drifted back to tight coupling. Push notifications <em>out</em> with events; pull commands <em>in</em> sparingly.
+                </blockquote>
+            </section>
+
+            <!-- Section 7: Exercise & Quiz -->
+            <section id="exercise" class="lesson-section">
+                <h2>Exercise &amp; Quiz</h2>
+
+                <div class="card card-info">
+                    <h3>🏋️ Exercise: A Persistent GameManager</h3>
+                    <p><strong>Objective:</strong> Build a singleton <code>GameManager</code> that tracks state and score, persists across scenes, and drives pause and restart.</p>
+
+                    <h4>Instructions:</h4>
+                    <ol>
+                        <li>Create the <code>GameState</code> enum and a <code>GameManager</code> singleton (Sections 2–4) with the <code>Awake</code> guard and <code>DontDestroyOnLoad</code>.</li>
+                        <li>Add a <code>Score</code> property and <code>AddScore(int)</code>; raise an event when it changes.</li>
+                        <li>Add <code>SetState(GameState)</code> that sets <code>Time.timeScale</code> for pause and raises <code>StateChanged</code>.</li>
+                        <li>On <code>Escape</code>, toggle between <code>Playing</code> and <code>Paused</code>. On a "Restart" call, reset score and reload the active scene.</li>
+                        <li>Put the manager in your first scene, add a second scene to Build Settings, and confirm the score survives a scene load.</li>
+                    </ol>
+
+                    <h4>Starter Code:</h4>
+                    <pre><code class="language-csharp">using System;
+using UnityEngine;
+using UnityEngine.SceneManagement;
+
+public enum GameState { MainMenu, Playing, Paused, GameOver }
+
+public class GameManager : MonoBehaviour
+{
+    public static GameManager Instance { get; private set; }
+    public GameState State { get; private set; } = GameState.MainMenu;
+    public int Score { get; private set; }
+
+    public event Action&lt;GameState&gt; StateChanged;
+    public event Action&lt;int&gt; ScoreChanged;
+
+    void Awake()
+    {
+        // TODO: singleton guard + DontDestroyOnLoad.
+    }
+
+    // TODO: AddScore, SetState (with timeScale), Restart.
+}</code></pre>
+
+                    <details>
+                        <summary>💡 Hint</summary>
+                        <p>Guard: <code>if (Instance != null &amp;&amp; Instance != this) { Destroy(gameObject); return; } Instance = this; DontDestroyOnLoad(gameObject);</code>. In <code>SetState</code>, set <code>Time.timeScale = newState == GameState.Paused ? 0f : 1f;</code> then <code>StateChanged?.Invoke(newState)</code>. In <code>Restart</code>, reset <code>Score</code>, set state to <code>Playing</code> (which restores timeScale), then <code>SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex)</code>.</p>
+                    </details>
+
+                    <details>
+                        <summary>✅ Solution</summary>
+                        <pre><code class="language-csharp">using System;
+using UnityEngine;
+using UnityEngine.SceneManagement;
+
+public enum GameState { MainMenu, Playing, Paused, GameOver }
+
+public class GameManager : MonoBehaviour
+{
+    public static GameManager Instance { get; private set; }
+    public GameState State { get; private set; } = GameState.MainMenu;
+    public int Score { get; private set; }
+
+    public event Action&lt;GameState&gt; StateChanged;
+    public event Action&lt;int&gt; ScoreChanged;
+
+    void Awake()
+    {
+        if (Instance != null &amp;&amp; Instance != this) { Destroy(gameObject); return; }
+        Instance = this;
+        DontDestroyOnLoad(gameObject);
+    }
+
+    void Update()
+    {
+        if (Input.GetKeyDown(KeyCode.Escape))
+        {
+            if (State == GameState.Playing) SetState(GameState.Paused);
+            else if (State == GameState.Paused) SetState(GameState.Playing);
+        }
+    }
+
+    public void AddScore(int amount)
+    {
+        Score += amount;
+        ScoreChanged?.Invoke(Score);
+    }
+
+    public void SetState(GameState newState)
+    {
+        if (State == newState) return;
+        State = newState;
+        Time.timeScale = (newState == GameState.Paused) ? 0f : 1f;
+        StateChanged?.Invoke(newState);
+    }
+
+    public void Restart()
+    {
+        Score = 0;
+        SetState(GameState.Playing);   // also restores timeScale to 1
+        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+    }
+}</code></pre>
+                        <p>One central authority, reachable via <code>Instance</code>, that <em>announces</em> state and score changes through events. UI and systems subscribe (Lesson 3.2) — they never poll the manager. It persists across scenes, and <code>Restart</code> cleanly resets both score and time.</p>
+                    </details>
+                </div>
+
+                <!-- Quiz Section -->
+                <div class="card quiz-container">
+                    <h3>🎯 Quick Quiz</h3>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 1:</strong> Why does the singleton register <code>Instance = this</code> in <code>Awake</code> rather than <code>Start</code>?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! All Awake calls run before any Start, so registering in Awake guarantees the singleton is available to every other script's Start.">
+                                A) All <code>Awake</code> calls run before any <code>Start</code>, so it's ready before other scripts use it.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="Start runs after Awake — using it would risk other scripts finding a null Instance.">
+                                B) <code>Start</code> runs before <code>Awake</code>, so it would be too late.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="It's about ordering, not performance.">
+                                C) <code>Awake</code> runs faster than <code>Start</code>.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 2:</strong> What does <code>DontDestroyOnLoad(gameObject)</code> do?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="It doesn't stop Destroy() calls — it survives scene loads specifically.">
+                                A) Prevents the object from ever being destroyed by <code>Destroy</code>.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! It keeps the (root) GameObject alive when a new scene loads, so managers persist across scenes.">
+                                B) Keeps the root GameObject alive across scene loads, so a manager persists between scenes.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="It has nothing to do with saving to disk — that's serialization (Lesson 4.3).">
+                                C) Saves the object's data to disk automatically.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 3:</strong> What's the recommended way to keep managers from recreating the tight coupling of Lesson 3.2?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="Routing everything through Instance is exactly the coupling problem.">
+                                A) Have every script poll <code>Instance</code> every frame.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! Let the manager broadcast state changes via events so systems react without depending on the manager for everything.">
+                                B) Have the manager broadcast state via events, so most systems react rather than reaching into <code>Instance</code>.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="One giant manager is the 'GodManager' anti-pattern.">
+                                C) Put all game logic into one large manager.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section 8: Summary -->
+            <section id="summary" class="lesson-section">
+                <h2>Summary</h2>
+
+                <div class="card card-success">
+                    <h3>🎉 Key Takeaways</h3>
+                    <ul>
+                        <li>A <strong>manager</strong> owns a global concern (state, score, audio, scenes); typically one per game, so managers are often <strong>singletons</strong>.</li>
+                        <li>The singleton pattern: a static <code>Instance</code> (with <code>private set</code>), registered in <code>Awake</code>, with a <strong>duplicate guard</strong> that destroys extra copies.</li>
+                        <li><code>DontDestroyOnLoad(gameObject)</code> (on a <em>root</em> object) keeps a manager alive across scene loads — the persistent-singleton recipe.</li>
+                        <li>Model game flow as a <strong>state machine</strong> with an <code>enum</code>; <code>Time.timeScale = 0</code> pauses time-based logic. Raise an event on transitions.</li>
+                        <li><code>SceneManager.LoadScene</code> (single/additive/async) switches scenes — but scenes must be in Build Settings, and reset <code>timeScale</code> to <code>1</code> before loading.</li>
+                        <li>Avoid singleton overuse: <strong>broadcast via events, command via <code>Instance</code> sparingly</strong>, one manager per concern.</li>
+                    </ul>
+                </div>
+
+                <h3>📚 Additional Resources</h3>
+                <ul>
+                    <li><a href="https://docs.unity3d.com/ScriptReference/Object.DontDestroyOnLoad.html" target="_blank" rel="noopener">Scripting Reference — DontDestroyOnLoad</a></li>
+                    <li><a href="https://docs.unity3d.com/ScriptReference/SceneManagement.SceneManager.html" target="_blank" rel="noopener">Scripting Reference — SceneManager</a></li>
+                    <li><a href="https://docs.unity3d.com/ScriptReference/Time-timeScale.html" target="_blank" rel="noopener">Scripting Reference — Time.timeScale</a></li>
+                    <li><a href="https://unity.com/how-to/programming-unity" target="_blank" rel="noopener">Unity — Programming patterns for game architecture</a></li>
+                </ul>
+
+                <h3>🚀 What's Next?</h3>
+                <p>Your game now has a brain that tracks state and score. Next, players need to <em>see</em> it. Lesson 4.2, <em>UI Scripting</em>, connects your managers and events to on-screen UI — score labels, health bars, pause menus — with uGUI and UI Toolkit.</p>
+
+                <!-- Encouragement Card -->
+                <div class="card card-accent" style="text-align: center; padding: 2rem;">
+                    <h3>🎉 Your game has a control center!</h3>
+                    <p>State, score, scenes, pause — all coordinated from one clear place. That's the backbone every shippable game needs.</p>
+                </div>
+            </section>
+
+            <!-- Lesson Navigation -->
+            <nav class="lesson-nav" aria-label="Lesson Navigation">
+                <a href="lesson_09.html" class="prev-lesson">← Previous: Lesson 3.3 — Coroutines and Async in Unity</a>
+                <a href="index.html" class="home-link">🏠 Course Home</a>
+                <a href="lesson_11.html" class="next-lesson">Next: Lesson 4.2 — UI Scripting →</a>
+            </nav>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+        <p>&copy; 2026 Ray de la Paz. All rights reserved.</p>
+        <div class="footer-links">
+            <a href="https://rays-home.netlify.app/">Ray's House of Fun</a>
+            <a href="https://rays-home.netlify.app/contact">Contact</a>
+            <a href="#" id="print-button">Print Page</a>
+        </div>
+        <p><small>Press <kbd>?</kbd> for keyboard shortcuts</small></p>
+    </footer>
+
+    <!-- JavaScript -->
+    <script src="js/clipboard.js"></script>
+    <script src="js/course-enhancements.js"></script>
+</body>
+</html>

@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Wire objects together in Unity — GetComponent and its variants, direct references, TryGetComponent, GetComponentInChildren/Parent, and the [SerializeField] attribute for Inspector wiring.">
+    <meta name="author" content="Ray de la Paz">
+    <title>Lesson 1.3: Accessing GameObjects and Components - C# Scripting in Unity</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="icon" type="image/png" href="favicon.png">
+    <!-- Mermaid — initialized by course-enhancements.js for theme awareness -->
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        window.__mermaid = mermaid;
+        // Initial config — JS will re-init on theme change
+        const isDark = localStorage.getItem('theme') === 'dark' ||
+            (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: isDark ? 'dark' : 'default',
+            themeVariables: isDark
+                ? { primaryColor: '#334155', primaryTextColor: '#e2e8f0', primaryBorderColor: '#6366f1', lineColor: '#94a3b8', secondaryColor: '#1e293b', tertiaryColor: '#0f172a' }
+                : { primaryColor: '#eff6ff', primaryTextColor: '#1e293b', primaryBorderColor: '#3b82f6', lineColor: '#64748b', secondaryColor: '#f8fafc', tertiaryColor: '#f1f5f9' }
+        });
+    </script>
+</head>
+<body>
+    <!-- Skip to main content for accessibility -->
+    <a href="#main-content" class="skip-to-main">Skip to main content</a>
+
+
+    <!-- Navigation -->
+    <nav class="main-nav">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo">C# Scripting in Unity</a>
+            <button id="mobile-menu-toggle" class="mobile-menu-toggle" aria-expanded="false" aria-controls="nav-links">
+                ☰
+            </button>
+            <div class="nav-links" id="nav-links">
+                <a href="index.html">Home</a>
+                <a href="index.html#modules">All Modules</a>
+                <span class="nav-divider"></span>
+                <a href="https://rays-home.netlify.app/">Ray's House of Fun</a>
+                <a href="https://rays-home.netlify.app/contact">Contact</a>
+                <button id="theme-toggle" aria-label="Toggle dark/light mode">🌙</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Breadcrumb -->
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+        <ul>
+            <li><a href="index.html">Home</a></li>
+            <li><a href="index.html#modules">Module 1</a></li>
+            <li aria-current="page">Lesson 1.3: Accessing GameObjects and Components</li>
+        </ul>
+    </nav>
+
+    <!-- Main Content -->
+    <main id="main-content">
+        <div class="container">
+            <!-- Lesson Header -->
+            <header>
+                <h1>📝 Lesson 1.3: Accessing GameObjects and Components</h1>
+                <p class="lead">A component that can't reach anything else can't do much. This lesson is about <strong>wiring</strong>: how one component gets a handle on another — on the same object, on a child, or across the scene — using <code>GetComponent</code>, direct references, and the <code>[SerializeField]</code> attribute that turns a field into an Inspector slot.</p>
+
+                <!-- Learning objectives -->
+                <div class="card card-info">
+                    <h2>🎯 Learning Objectives</h2>
+                    <p>By the end of this lesson, you will be able to:</p>
+                    <ul>
+                        <li>Use <code>GetComponent&lt;T&gt;()</code> to reach another component on the same GameObject</li>
+                        <li>Choose between <code>GetComponent</code>, <code>TryGetComponent</code>, and a cached reference</li>
+                        <li>Search relatives with <code>GetComponentInChildren</code> and <code>GetComponentInParent</code></li>
+                        <li>Expose a private field in the Inspector with <code>[SerializeField]</code> — and know why that beats <code>public</code></li>
+                        <li>Wire references in the Editor and understand when to search in code instead</li>
+                        <li>Avoid the "missing component" <code>NullReferenceException</code></li>
+                    </ul>
+                    <p><strong>Estimated Time:</strong> 60 minutes</p>
+                    <p><strong>Project:</strong> Build a <code>DamageOnContact</code> component that finds and calls a <code>Health</code> component, wired three different ways.</p>
+                </div>
+            </header>
+
+            <!-- Sticky Table of Contents -->
+            <details class="card toc-card" open>
+                <summary aria-label="Toggle table of contents">
+                    <span class="toc-icon" aria-hidden="true">📑</span>
+                    <span class="toc-label">In This Lesson</span>
+                    <span class="toc-chevron" aria-hidden="true">▾</span>
+                </summary>
+                <nav aria-label="Table of Contents">
+                    <ol>
+                        <li><a href="#introduction" class="toc-link">The Wiring Problem</a></li>
+                        <li><a href="#getcomponent" class="toc-link">GetComponent on the Same Object</a></li>
+                        <li><a href="#relatives" class="toc-link">Reaching Children &amp; Parents</a></li>
+                        <li><a href="#serializefield" class="toc-link">[SerializeField] &amp; Inspector Wiring</a></li>
+                        <li><a href="#finding" class="toc-link">Finding Objects Across the Scene</a></li>
+                        <li><a href="#null" class="toc-link">Caching &amp; Avoiding Null</a></li>
+                        <li><a href="#exercise" class="toc-link">Exercise &amp; Quiz</a></li>
+                        <li><a href="#summary" class="toc-link">Summary</a></li>
+                    </ol>
+                </nav>
+            </details>
+
+            <!-- Section 1: Intro -->
+            <section id="introduction" class="lesson-section">
+                <h2>The Wiring Problem</h2>
+                <p>In Lesson 1.1 we built a <code>Health</code> component and a <code>Shooter</code>, and said "the Shooter finds the target's Health and calls <code>TakeDamage</code>." That word — <em>finds</em> — is the whole subject of this lesson. Composition only pays off if components can locate each other.</p>
+
+                <p>From Lesson 1.1 you already have two references handed to you for free by the base classes:</p>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>Property</th><th>Gives you</th><th>Inherited from</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td><code>gameObject</code></td><td>The GameObject this component is attached to</td><td><code>Component</code></td></tr>
+                            <tr><td><code>transform</code></td><td>That GameObject's Transform (position/rotation/scale + hierarchy)</td><td><code>Component</code></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <p>Everything else you reach by one of three strategies, in rough order of preference:</p>
+                <div class="mermaid">
+                    graph TD
+                    Q["I need another component…"] --> A["On the SAME GameObject?<br/>➜ GetComponent"]
+                    Q --> B["On a child or parent?<br/>➜ GetComponentInChildren / InParent"]
+                    Q --> C["A specific object elsewhere?<br/>➜ a serialized reference (wire it in the Inspector)"]
+                    style A fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                    style B fill:#eff6ff,stroke:#3b82f6,stroke-width:2px
+                    style C fill:#f3e8ff,stroke:#8b5cf6,stroke-width:2px
+                </div>
+            </section>
+
+            <!-- Section 2: GetComponent -->
+            <section id="getcomponent" class="lesson-section">
+                <h2>GetComponent on the Same Object</h2>
+                <p><code>GetComponent&lt;T&gt;()</code> asks the GameObject, "do you also have a component of type <code>T</code>?" and returns it — or <code>null</code> if there isn't one. It's the workhorse for components that live together on one object.</p>
+
+                <pre><code class="language-csharp">using UnityEngine;
+
+[RequireComponent(typeof(Rigidbody))]
+public class Jumper : MonoBehaviour
+{
+    private Rigidbody body;   // cache the reference
+
+    void Awake()
+    {
+        // Grab the Rigidbody attached to THIS same GameObject.
+        body = GetComponent&lt;Rigidbody&gt;();
+    }
+
+    void Jump()
+    {
+        body.AddForce(Vector3.up * 5f, ForceMode.Impulse);
+    }
+}</code></pre>
+
+                <div class="card card-accent">
+                    <h4>📖 Definition</h4>
+                    <p><code>[RequireComponent(typeof(Rigidbody))]</code> is an attribute that tells Unity this script needs a <code>Rigidbody</code>. Unity will auto-add one when the script is attached and stop you from removing it — so <code>GetComponent&lt;Rigidbody&gt;()</code> can't come back null. Use it whenever your script depends on another component being present.</p>
+                </div>
+
+                <h3>The safer variant: <code>TryGetComponent</code></h3>
+                <p>When a component <em>might not</em> be there, <code>TryGetComponent&lt;T&gt;(out T)</code> avoids both a null check and (in editor) a harmless-but-noisy allocation when nothing is found. It returns a <code>bool</code> and follows the classic C# <code>Try...</code> pattern you know from <code>int.TryParse</code>:</p>
+                <pre><code class="language-csharp">// Only heal if this object actually has a Health component.
+if (TryGetComponent&lt;Health&gt;(out Health health))
+{
+    health.Heal(10);
+}</code></pre>
+
+                <div class="card card-warning">
+                    <h4>⚠️ Watch Out: <code>GetComponent</code> is not free</h4>
+                    <p>Each call does a lookup across the object's components. Calling it <strong>every frame in <code>Update</code></strong> is a classic performance mistake. Call it once in <code>Awake</code>/<code>Start</code> and store the result in a field (we cover why in Lesson 5.1). The pattern above — cache in <code>Awake</code> — is the habit to build now.</p>
+                </div>
+            </section>
+
+            <!-- Section 3: Relatives -->
+            <section id="relatives" class="lesson-section">
+                <h2>Reaching Children &amp; Parents</h2>
+                <p>Complex objects are usually a <strong>hierarchy</strong>: a Player GameObject with child objects for the model, a weapon, and a health bar. Two variants search that hierarchy instead of just the one object.</p>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>Method</th><th>Searches</th><th>Typical use</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td><code>GetComponent&lt;T&gt;()</code></td><td>This GameObject only</td><td>Sibling components on the same object</td></tr>
+                            <tr><td><code>GetComponentInChildren&lt;T&gt;()</code></td><td>This object <em>and</em> all descendants</td><td>Find an <code>Animator</code> or <code>Collider</code> on a child model</td></tr>
+                            <tr><td><code>GetComponentInParent&lt;T&gt;()</code></td><td>This object <em>and</em> its ancestors</td><td>A child part finding the root <code>Player</code> it belongs to</td></tr>
+                            <tr><td><code>GetComponentsInChildren&lt;T&gt;()</code></td><td>All descendants — returns an <em>array</em></td><td>Disable every <code>Renderer</code> under an object</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="mermaid">
+                    graph TD
+                    P["Player (root)<br/>PlayerController"]
+                    P --> M["Model<br/>Animator"]
+                    P --> W["Weapon<br/>Collider"]
+                    M --> Mesh["MeshRoot<br/>Renderer(s)"]
+                    style P fill:#eff6ff,stroke:#3b82f6,stroke-width:2px
+                    style M fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                </div>
+
+                <pre><code class="language-csharp">public class PlayerController : MonoBehaviour
+{
+    private Animator animator;
+
+    void Awake()
+    {
+        // The Animator lives on the child 'Model', not on the Player root.
+        animator = GetComponentInChildren&lt;Animator&gt;();
+    }
+}
+
+// A child weapon script finding the Player it belongs to:
+public class Weapon : MonoBehaviour
+{
+    private PlayerController owner;
+
+    void Awake()
+    {
+        owner = GetComponentInParent&lt;PlayerController&gt;();
+    }
+}</code></pre>
+
+                <blockquote>
+                    <strong>💡 Note:</strong> the <code>InChildren</code>/<code>InParent</code> versions <em>include the object they're called on</em>, not just its relatives. And they return the <strong>first match</strong> found in the hierarchy — use the plural <code>GetComponentsInChildren</code> when you want them all.
+                </blockquote>
+            </section>
+
+            <!-- Section 4: SerializeField -->
+            <section id="serializefield" class="lesson-section">
+                <h2>[SerializeField] &amp; Inspector Wiring</h2>
+                <p>Searching in code is great for relatives, but for a reference to a <em>specific</em> object elsewhere in the scene — "this door's key", "the camera to follow" — the cleanest approach is to <strong>expose a slot in the Inspector and drag the object in</strong>. No lookup code at all.</p>
+
+                <p>In Lesson 1.1 we made fields <code>public</code> so they'd show in the Inspector. That works, but it breaks encapsulation — now <em>any</em> other script can modify the field too. The idiomatic Unity solution is the <code>[SerializeField]</code> attribute: it shows a <strong>private</strong> field in the Inspector without making it public.</p>
+
+                <pre><code class="language-csharp">using UnityEngine;
+
+public class CameraFollow : MonoBehaviour
+{
+    // Shows in the Inspector as a slot, but stays private to other code.
+    [SerializeField] private Transform target;
+
+    [SerializeField] private float height = 5f;   // also tunable in Inspector
+
+    void LateUpdate()
+    {
+        if (target != null)
+            transform.position = target.position + new Vector3(0f, height, -10f);
+    }
+}</code></pre>
+
+                <div class="card card-success">
+                    <h4>✅ public vs [SerializeField]</h4>
+                    <p>Rule of thumb: <strong>use <code>[SerializeField] private</code> for anything you want to set in the Inspector but keep other scripts out of.</strong> Reserve <code>public</code> for members that genuinely form your component's API for <em>other code</em> to use (like <code>TakeDamage</code>). "Visible in Inspector" and "accessible from other classes" are two different needs — <code>[SerializeField]</code> lets you ask for just the first.</p>
+                </div>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th></th><th>Shows in Inspector?</th><th>Other scripts can access?</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td><code>public T field;</code></td><td>✅ Yes</td><td>✅ Yes (even by accident)</td></tr>
+                            <tr><td><code>[SerializeField] private T field;</code></td><td>✅ Yes</td><td>❌ No — encapsulated</td></tr>
+                            <tr><td><code>private T field;</code></td><td>❌ No</td><td>❌ No</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <blockquote>
+                    <strong>⚠️ Important:</strong> A serialized reference wired in the Inspector is set <em>before</em> <code>Awake</code> runs — Unity deserializes it as the object loads. So you can safely use <code>[SerializeField]</code> references starting in <code>Awake</code>. (The counterpart <code>[HideInInspector] public</code> does the opposite: public to code, hidden from the Inspector.)
+                </blockquote>
+            </section>
+
+            <!-- Section 5: Finding across scene -->
+            <section id="finding" class="lesson-section">
+                <h2>Finding Objects Across the Scene</h2>
+                <p>Sometimes you need an object you can't wire in the Inspector — perhaps it's spawned at runtime. Unity offers scene-wide search methods, but they come with a health warning.</p>
+
+                <pre><code class="language-csharp">// By name (searches the whole active scene — slow, brittle to renames):
+GameObject player = GameObject.Find("Player");
+
+// By tag (faster than Find, still a search):
+GameObject respawn = GameObject.FindWithTag("Respawn");
+
+// Find a component of a type anywhere in the scene (Unity 2023+ API name):
+Camera cam = Object.FindFirstObjectByType&lt;Camera&gt;();</code></pre>
+
+                <div class="card card-warning">
+                    <h4>⚠️ Watch Out: prefer wiring over finding</h4>
+                    <p><code>GameObject.Find</code> searches every object by string name — it's slow, and a typo or rename silently returns <code>null</code>. <strong>Never call these in <code>Update</code>.</strong> If you must use them, do it once in <code>Awake</code>/<code>Start</code> and cache the result. Better still: expose a <code>[SerializeField]</code> reference and drag the object in — it's faster, refactor-safe, and visible to anyone reading the Inspector.</p>
+                </div>
+
+                <div class="card card-info">
+                    <h4>💡 The preference ladder</h4>
+                    <p>From best to last-resort: <strong>1.</strong> A <code>[SerializeField]</code> reference wired in the Inspector → <strong>2.</strong> <code>GetComponent</code>/<code>InChildren</code>/<code>InParent</code> for relatives → <strong>3.</strong> a manager/singleton you register with (Lesson 4.1) → <strong>4.</strong> <code>Find</code>/<code>FindWithTag</code> only when nothing else fits, cached once.</p>
+                </div>
+            </section>
+
+            <!-- Section 6: Null / caching -->
+            <section id="null" class="lesson-section">
+                <h2>Caching &amp; Avoiding Null</h2>
+                <p>Two habits prevent the vast majority of "it compiled but crashed at runtime" bugs in Unity scripting.</p>
+
+                <h3>1. Cache once, reuse forever</h3>
+                <p>Look up a component <em>once</em> in <code>Awake</code>/<code>Start</code>, store it in a field, and use the field everywhere else. This is faster and makes your dependencies obvious at the top of the class.</p>
+
+                <h3>2. Assume lookups can fail</h3>
+                <p>Any lookup that isn't guaranteed (no <code>[RequireComponent]</code>, no wired Inspector slot) can return <code>null</code>. Reading a member off <code>null</code> throws a <code>NullReferenceException</code> — the most common runtime error in Unity. Guard it:</p>
+
+                <pre><code class="language-csharp">public class DamageOnContact : MonoBehaviour
+{
+    [SerializeField] private int damage = 10;
+
+    private void ApplyTo(GameObject other)
+    {
+        // TryGetComponent gives us a clean guarded call — no separate null check.
+        if (other.TryGetComponent&lt;Health&gt;(out Health health))
+        {
+            health.TakeDamage(damage);
+        }
+        // If there's no Health, we simply do nothing — no crash.
+    }
+}</code></pre>
+
+                <blockquote>
+                    <strong>💡 Unity's special null:</strong> Unity overloads <code>==</code> so that a <em>destroyed</em> object compares equal to <code>null</code> even though the C# reference technically still exists. That's why <code>if (target != null)</code> is the right guard even after something was <code>Destroy</code>-ed. It also means you should avoid the C# null-conditional <code>?.</code> on Unity objects in edge cases — a plain <code>!= null</code> check is the safe idiom.
+                </blockquote>
+
+                <div class="card card-success">
+                    <h4>✅ Pro Tip</h4>
+                    <p>When a required reference is missing, fail <em>loudly</em> during development: <code>if (target == null) Debug.LogError("CameraFollow: target not assigned", this);</code>. Passing <code>this</code> as the second argument makes clicking the console message ping the offending object in the Hierarchy.</p>
+                </div>
+            </section>
+
+            <!-- Section 7: Exercise & Quiz -->
+            <section id="exercise" class="lesson-section">
+                <h2>Exercise &amp; Quiz</h2>
+
+                <div class="card card-info">
+                    <h3>🏋️ Exercise: Wire Up Damage Three Ways</h3>
+                    <p><strong>Objective:</strong> Reach a <code>Health</code> component using each of the three strategies, and feel when each one fits.</p>
+
+                    <h4>Instructions:</h4>
+                    <ol>
+                        <li>Reuse the <code>Health</code> component from Lesson 1.1 (with a public <code>TakeDamage(int)</code>). Put it on a GameObject named <code>Enemy</code>.</li>
+                        <li><strong>Same object:</strong> add a <code>Suicidal</code> script to <code>Enemy</code> that, on <code>Start</code>, calls <code>GetComponent&lt;Health&gt;()</code> and deals 5 damage to itself.</li>
+                        <li><strong>Inspector wiring:</strong> add a <code>Trap</code> script with a <code>[SerializeField] private Health target;</code> field; drag the Enemy's Health into that slot and damage it from <code>Start</code>.</li>
+                        <li><strong>Guarded runtime lookup:</strong> add a <code>DamageZone</code> script whose method takes a <code>GameObject</code> and uses <code>TryGetComponent&lt;Health&gt;</code> to damage it only if it has Health.</li>
+                        <li>Answer in a comment: which of the three would keep working if you renamed the Enemy GameObject? (All three — none rely on the name. Now try it with <code>GameObject.Find("Enemy")</code> and rename it to see it break.)</li>
+                    </ol>
+
+                    <h4>Starter Code:</h4>
+                    <pre><code class="language-csharp">using UnityEngine;
+
+public class Trap : MonoBehaviour
+{
+    [SerializeField] private Health target;   // drag Enemy's Health here
+
+    void Start()
+    {
+        // TODO: if target is assigned, deal 5 damage to it.
+    }
+}</code></pre>
+
+                    <details>
+                        <summary>💡 Hint</summary>
+                        <p>For the same-object case, cache <code>GetComponent&lt;Health&gt;()</code> in a field in <code>Awake</code>, then call <code>TakeDamage</code> in <code>Start</code>. For the guarded lookup, remember <code>TryGetComponent</code> returns a <code>bool</code> and gives you the component via <code>out</code>, so no separate null check is needed.</p>
+                    </details>
+
+                    <details>
+                        <summary>✅ Solution</summary>
+                        <pre><code class="language-csharp">using UnityEngine;
+
+// 1) Same object
+public class Suicidal : MonoBehaviour
+{
+    private Health health;
+    void Awake()  =&gt; health = GetComponent&lt;Health&gt;();
+    void Start()  =&gt; health.TakeDamage(5);
+}
+
+// 2) Inspector-wired reference
+public class Trap : MonoBehaviour
+{
+    [SerializeField] private Health target;
+
+    void Start()
+    {
+        if (target != null)
+            target.TakeDamage(5);
+        else
+            Debug.LogError("Trap: target not assigned", this);
+    }
+}
+
+// 3) Guarded runtime lookup
+public class DamageZone : MonoBehaviour
+{
+    [SerializeField] private int damage = 10;
+
+    public void ApplyTo(GameObject other)
+    {
+        if (other.TryGetComponent&lt;Health&gt;(out Health health))
+            health.TakeDamage(damage);
+    }
+}</code></pre>
+                        <p>Notice none of the three mention the GameObject's <em>name</em> — renaming Enemy changes nothing. Only <code>GameObject.Find("Enemy")</code> would break on a rename, which is exactly why the wired reference is preferred.</p>
+                    </details>
+                </div>
+
+                <!-- Quiz Section -->
+                <div class="card quiz-container">
+                    <h3>🎯 Quick Quiz</h3>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 1:</strong> You want a private field to appear in the Inspector without letting other scripts modify it. What do you use?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="public exposes it to every other script too — the opposite of what's asked.">
+                                A) Make the field <code>public</code>.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! [SerializeField] private shows the field in the Inspector while keeping it inaccessible to other code.">
+                                B) <code>[SerializeField] private</code> on the field.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="[HideInInspector] does the reverse — hides a public field from the Inspector.">
+                                C) <code>[HideInInspector]</code> on the field.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 2:</strong> Why should you avoid calling <code>GetComponent</code> (or <code>GameObject.Find</code>) inside <code>Update</code>?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="They work fine there — the problem is doing it repeatedly.">
+                                A) They don't work inside <code>Update</code>.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! They perform a lookup each call; running that every frame wastes performance. Cache the result once in Awake/Start.">
+                                B) They perform a lookup on every call, so running them every frame is wasteful — cache the result once instead.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="They can absolutely return components created earlier; timing isn't the core issue here.">
+                                C) They can only find objects created after <code>Update</code> starts.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 3:</strong> The <code>Animator</code> is on a <em>child</em> of the object your script sits on. Which call retrieves it?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="Plain GetComponent only looks at the same GameObject.">
+                                A) <code>GetComponent&lt;Animator&gt;()</code>
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! GetComponentInChildren searches this object and all its descendants, returning the first match.">
+                                B) <code>GetComponentInChildren&lt;Animator&gt;()</code>
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="InParent searches upward through ancestors, not down into children.">
+                                C) <code>GetComponentInParent&lt;Animator&gt;()</code>
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section 8: Summary -->
+            <section id="summary" class="lesson-section">
+                <h2>Summary</h2>
+
+                <div class="card card-success">
+                    <h3>🎉 Key Takeaways</h3>
+                    <ul>
+                        <li>Every component gets <code>gameObject</code> and <code>transform</code> for free from <code>Component</code>.</li>
+                        <li><code>GetComponent&lt;T&gt;()</code> reaches a sibling on the same object; <code>GetComponentInChildren</code>/<code>InParent</code> search the hierarchy (and include the object itself).</li>
+                        <li><code>TryGetComponent&lt;T&gt;(out T)</code> is the clean, guarded way to handle a component that might not exist.</li>
+                        <li><code>[SerializeField] private</code> exposes a field in the Inspector <em>without</em> making it public — prefer it over <code>public</code> for wiring; wired references are set before <code>Awake</code>.</li>
+                        <li>Prefer wiring in the Inspector over <code>GameObject.Find</code>; if you must search, do it once in <code>Awake</code>/<code>Start</code> and cache — never in <code>Update</code>.</li>
+                        <li>Guard lookups against <code>null</code>; remember Unity's overloaded <code>==</code> treats a destroyed object as <code>null</code>.</li>
+                    </ul>
+                </div>
+
+                <h3>📚 Additional Resources</h3>
+                <ul>
+                    <li><a href="https://docs.unity3d.com/ScriptReference/Component.GetComponent.html" target="_blank" rel="noopener">Scripting Reference — GetComponent</a></li>
+                    <li><a href="https://docs.unity3d.com/ScriptReference/Component.TryGetComponent.html" target="_blank" rel="noopener">Scripting Reference — TryGetComponent</a></li>
+                    <li><a href="https://docs.unity3d.com/ScriptReference/SerializeField.html" target="_blank" rel="noopener">Scripting Reference — SerializeField</a></li>
+                    <li><a href="https://docs.unity3d.com/ScriptReference/RequireComponent.html" target="_blank" rel="noopener">Scripting Reference — RequireComponent</a></li>
+                </ul>
+
+                <h3>🚀 What's Next?</h3>
+                <p>That completes <strong>Module 1 — Unity's C# Model</strong>: you understand components, the lifecycle, and how to wire objects together. In Module 2 we put it to work — starting with Lesson 2.1, <em>Input and Movement</em>, where you'll read the player's input and move a Transform every frame.</p>
+
+                <!-- Encouragement Card -->
+                <div class="card card-accent" style="text-align: center; padding: 2rem;">
+                    <h3>🎉 Module 1 complete!</h3>
+                    <p>You can now build objects out of components, control when they run, and connect them together. That's the entire foundation of Unity scripting — everything else builds on it.</p>
+                </div>
+            </section>
+
+            <!-- Lesson Navigation -->
+            <nav class="lesson-nav" aria-label="Lesson Navigation">
+                <a href="lesson_02.html" class="prev-lesson">← Previous: Lesson 1.2 — The Event Function Lifecycle</a>
+                <a href="index.html" class="home-link">🏠 Course Home</a>
+                <a href="lesson_04.html" class="next-lesson">Next: Lesson 2.1 — Input and Movement →</a>
+            </nav>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+        <p>&copy; 2026 Ray de la Paz. All rights reserved.</p>
+        <div class="footer-links">
+            <a href="https://rays-home.netlify.app/">Ray's House of Fun</a>
+            <a href="https://rays-home.netlify.app/contact">Contact</a>
+            <a href="#" id="print-button">Print Page</a>
+        </div>
+        <p><small>Press <kbd>?</kbd> for keyboard shortcuts</small></p>
+    </footer>
+
+    <!-- JavaScript -->
+    <script src="js/clipboard.js"></script>
+    <script src="js/course-enhancements.js"></script>
+</body>
+</html>

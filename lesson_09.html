@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Spread work across frames in Unity with coroutines (IEnumerator/yield), master the yield instructions, and compare coroutines to C# async/await and Unity 6's Awaitable.">
+    <meta name="author" content="Ray de la Paz">
+    <title>Lesson 3.3: Coroutines and Async in Unity - C# Scripting in Unity</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="icon" type="image/png" href="favicon.png">
+    <!-- Mermaid — initialized by course-enhancements.js for theme awareness -->
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        window.__mermaid = mermaid;
+        // Initial config — JS will re-init on theme change
+        const isDark = localStorage.getItem('theme') === 'dark' ||
+            (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: isDark ? 'dark' : 'default',
+            themeVariables: isDark
+                ? { primaryColor: '#334155', primaryTextColor: '#e2e8f0', primaryBorderColor: '#6366f1', lineColor: '#94a3b8', secondaryColor: '#1e293b', tertiaryColor: '#0f172a' }
+                : { primaryColor: '#eff6ff', primaryTextColor: '#1e293b', primaryBorderColor: '#3b82f6', lineColor: '#64748b', secondaryColor: '#f8fafc', tertiaryColor: '#f1f5f9' }
+        });
+    </script>
+</head>
+<body>
+    <!-- Skip to main content for accessibility -->
+    <a href="#main-content" class="skip-to-main">Skip to main content</a>
+
+
+    <!-- Navigation -->
+    <nav class="main-nav">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo">C# Scripting in Unity</a>
+            <button id="mobile-menu-toggle" class="mobile-menu-toggle" aria-expanded="false" aria-controls="nav-links">
+                ☰
+            </button>
+            <div class="nav-links" id="nav-links">
+                <a href="index.html">Home</a>
+                <a href="index.html#modules">All Modules</a>
+                <span class="nav-divider"></span>
+                <a href="https://rays-home.netlify.app/">Ray's House of Fun</a>
+                <a href="https://rays-home.netlify.app/contact">Contact</a>
+                <button id="theme-toggle" aria-label="Toggle dark/light mode">🌙</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Breadcrumb -->
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+        <ul>
+            <li><a href="index.html">Home</a></li>
+            <li><a href="index.html#modules">Module 3</a></li>
+            <li aria-current="page">Lesson 3.3: Coroutines and Async in Unity</li>
+        </ul>
+    </nav>
+
+    <!-- Main Content -->
+    <main id="main-content">
+        <div class="container">
+            <!-- Lesson Header -->
+            <header>
+                <h1>📝 Lesson 3.3: Coroutines and Async in Unity</h1>
+                <p class="lead">How do you "wait 3 seconds, then open the door" or "fade the screen over 1 second" when <code>Update</code> can't sleep? The answer is a <strong>coroutine</strong> — a method that runs a bit, pauses, and resumes across frames. This lesson covers coroutines in depth, then compares them to C#'s <code>async</code>/<code>await</code>.</p>
+
+                <!-- Learning objectives -->
+                <div class="card card-info">
+                    <h2>🎯 Learning Objectives</h2>
+                    <p>By the end of this lesson, you will be able to:</p>
+                    <ul>
+                        <li>Explain why blocking or <code>Thread.Sleep</code> is wrong in Unity's single-threaded loop</li>
+                        <li>Write a coroutine with <code>IEnumerator</code> and <code>yield return</code>, and start it with <code>StartCoroutine</code></li>
+                        <li>Use the key yield instructions (<code>null</code>, <code>WaitForSeconds</code>, <code>WaitUntil</code>, …)</li>
+                        <li>Stop coroutines and understand how object enable/destroy affects them</li>
+                        <li>Compare coroutines to <code>async</code>/<code>await</code> and Unity 6's <code>Awaitable</code></li>
+                        <li>Choose the right tool for delays, sequences, and background work</li>
+                    </ul>
+                    <p><strong>Estimated Time:</strong> 75 minutes</p>
+                    <p><strong>Project:</strong> A door that opens after a delay, and a screen-fade sequence — both built as coroutines.</p>
+                </div>
+            </header>
+
+            <!-- Sticky Table of Contents -->
+            <details class="card toc-card" open>
+                <summary aria-label="Toggle table of contents">
+                    <span class="toc-icon" aria-hidden="true">📑</span>
+                    <span class="toc-label">In This Lesson</span>
+                    <span class="toc-chevron" aria-hidden="true">▾</span>
+                </summary>
+                <nav aria-label="Table of Contents">
+                    <ol>
+                        <li><a href="#introduction" class="toc-link">Why You Can't Just Sleep</a></li>
+                        <li><a href="#coroutines" class="toc-link">Coroutine Basics</a></li>
+                        <li><a href="#yields" class="toc-link">The Yield Instructions</a></li>
+                        <li><a href="#patterns" class="toc-link">Common Patterns</a></li>
+                        <li><a href="#stopping" class="toc-link">Stopping &amp; Lifecycle Gotchas</a></li>
+                        <li><a href="#async" class="toc-link">Coroutines vs async/await</a></li>
+                        <li><a href="#exercise" class="toc-link">Exercise &amp; Quiz</a></li>
+                        <li><a href="#summary" class="toc-link">Summary</a></li>
+                    </ol>
+                </nav>
+            </details>
+
+            <!-- Section 1: Why not sleep -->
+            <section id="introduction" class="lesson-section">
+                <h2>Why You Can't Just Sleep</h2>
+                <p>Your instinct from console C# might be: "wait 3 seconds" = <code>Thread.Sleep(3000)</code>. In Unity that <strong>freezes the entire game</strong>. Remember from Lesson 1.2 that Unity runs your code on one main thread, calling <code>Update</code> each frame. Blocking that thread means no rendering, no input, no anything — a frozen window for 3 seconds.</p>
+
+                <pre><code class="language-csharp">void Update()
+{
+    if (triggered)
+    {
+        Thread.Sleep(3000);   // ❌ freezes the whole game for 3 seconds
+        OpenDoor();
+    }
+}</code></pre>
+
+                <p>You need a way to say "pause <em>this task</em> for 3 seconds, but keep the game running." That's exactly what a coroutine does: it lets a method give control back to Unity, then pick up where it left off later.</p>
+
+                <div class="card card-accent">
+                    <h4>📖 Definition</h4>
+                    <p>A <strong>coroutine</strong> is a method that can pause its own execution (<code>yield</code>) and resume on a later frame, while the rest of the game keeps running. It runs on the main thread — it's not multithreading — it just spreads its work across many frames.</p>
+                </div>
+
+                <blockquote>
+                    <strong>💡 Connection to Intermediate C#:</strong> a coroutine is literally a C# <em>iterator</em> — the <code>IEnumerator</code>/<code>yield return</code> feature you saw for lazy sequences. Unity repurposes it: each <code>yield</code> hands a value back to the engine that says "resume me when this condition is met."</p>
+                </blockquote>
+            </section>
+
+            <!-- Section 2: Coroutine basics -->
+            <section id="coroutines" class="lesson-section">
+                <h2>Coroutine Basics</h2>
+                <p>Three pieces: the method returns <code>IEnumerator</code>, it uses <code>yield return</code> to pause, and you launch it with <code>StartCoroutine</code>.</p>
+
+                <pre><code class="language-csharp">using System.Collections;   // IEnumerator lives here
+using UnityEngine;
+
+public class Door : MonoBehaviour
+{
+    void Start()
+    {
+        StartCoroutine(OpenAfterDelay());   // launch the coroutine
+    }
+
+    private IEnumerator OpenAfterDelay()
+    {
+        Debug.Log("Waiting...");
+        yield return new WaitForSeconds(3f);   // pause HERE for 3 seconds, game keeps running
+        Debug.Log("Opening!");                 // resumes here 3 seconds later
+        Open();
+    }
+
+    private void Open() =&gt; transform.Translate(Vector3.up * 3f);
+}</code></pre>
+
+                <div class="mermaid">
+                    graph LR
+                    A["StartCoroutine"] --> B["run until first yield"]
+                    B --> C["yield: hand control<br/>back to Unity"]
+                    C --> D["game keeps running<br/>(other Updates, rendering)"]
+                    D --> E["condition met<br/>(e.g. 3s passed)"]
+                    E --> F["resume after the yield"]
+                    F --> G["finish (or yield again)"]
+                    style C fill:#eff6ff,stroke:#3b82f6,stroke-width:2px
+                    style F fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                </div>
+
+                <div class="card card-info">
+                    <h4>💡 Reading a coroutine</h4>
+                    <p><code>yield return X;</code> means "pause here; resume after <code>X</code> is satisfied." Everything <em>before</em> the yield runs now; everything <em>after</em> runs when it resumes. A coroutine can have many yields, running like a little script that unfolds over time — code you read top-to-bottom that executes across frames.</p>
+                </div>
+
+                <blockquote>
+                    <strong>⚠️ Important:</strong> <code>StartCoroutine</code> is a <code>MonoBehaviour</code> method, and coroutines are tied to the MonoBehaviour that starts them. Start it on the component that "owns" the task. You can keep the returned <code>Coroutine</code> handle to stop it later.
+                </blockquote>
+            </section>
+
+            <!-- Section 3: Yield instructions -->
+            <section id="yields" class="lesson-section">
+                <h2>The Yield Instructions</h2>
+                <p>What you <code>yield return</code> decides <em>when</em> the coroutine resumes. The essential set:</p>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>Yield</th><th>Resumes…</th><th>Use for</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td><code>yield return null;</code></td><td>Next frame (after all Updates)</td><td>Doing a little work per frame (fades, gradual motion)</td></tr>
+                            <tr><td><code>yield return new WaitForSeconds(t);</code></td><td>After <code>t</code> scaled seconds</td><td>Timed delays affected by <code>Time.timeScale</code> (pause-aware)</td></tr>
+                            <tr><td><code>yield return new WaitForSecondsRealtime(t);</code></td><td>After <code>t</code> real seconds</td><td>Delays that ignore pause (menus while <code>timeScale = 0</code>)</td></tr>
+                            <tr><td><code>yield return new WaitUntil(() =&gt; cond);</code></td><td>When the condition becomes true</td><td>Waiting on state ("until loaded")</td></tr>
+                            <tr><td><code>yield return new WaitForFixedUpdate();</code></td><td>After the next physics step</td><td>Coordinating with physics</td></tr>
+                            <tr><td><code>yield return anotherCoroutine;</code></td><td>When that coroutine finishes</td><td>Sequencing coroutines</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="card card-warning">
+                    <h4>⚠️ Two classic yield gotchas</h4>
+                    <p><strong>(1) <code>WaitForSeconds</code> obeys <code>Time.timeScale</code>:</strong> if you pause the game with <code>Time.timeScale = 0</code>, a <code>WaitForSeconds</code> never completes. Use <code>WaitForSecondsRealtime</code> for anything that must run while paused. <strong>(2) Don't allocate in a tight loop:</strong> <code>yield return new WaitForSeconds(1f)</code> inside a loop allocates a new object each iteration — cache it in a field (<code>WaitForSeconds wait = new(1f);</code>) and reuse it (Lesson 5.1).</p>
+                </div>
+
+                <p>A per-frame example — a smooth fade over one second using <code>yield return null</code>:</p>
+                <pre><code class="language-csharp">private IEnumerator FadeOut(CanvasGroup group, float duration)
+{
+    float elapsed = 0f;
+    while (elapsed &lt; duration)
+    {
+        elapsed += Time.deltaTime;                 // count up each frame
+        group.alpha = 1f - (elapsed / duration);   // 1 → 0
+        yield return null;                          // wait one frame, then loop
+    }
+    group.alpha = 0f;   // ensure exact final value
+}</code></pre>
+            </section>
+
+            <!-- Section 4: Patterns -->
+            <section id="patterns" class="lesson-section">
+                <h2>Common Patterns</h2>
+                <p>Coroutines shine wherever something unfolds <em>over time</em>. Three you'll reuse constantly:</p>
+
+                <h3>Timed sequence</h3>
+                <p>Do a series of steps with pauses between — a cutscene, a tutorial, a countdown:</p>
+                <pre><code class="language-csharp">private IEnumerator StartRound()
+{
+    ui.Show("Ready");
+    yield return new WaitForSeconds(1f);
+    ui.Show("Set");
+    yield return new WaitForSeconds(1f);
+    ui.Show("Go!");
+    yield return new WaitForSeconds(0.5f);
+    ui.Hide();
+    BeginPlay();
+}</code></pre>
+
+                <h3>Spawn waves</h3>
+                <p>Repeat an action on an interval (with the cached-wait optimization):</p>
+                <pre><code class="language-csharp">[SerializeField] private Enemy enemyPrefab;
+[SerializeField] private float interval = 2f;
+
+private IEnumerator SpawnWaves()
+{
+    var wait = new WaitForSeconds(interval);   // cache — don't allocate per loop
+    while (true)                               // runs until the object is disabled/destroyed
+    {
+        Instantiate(enemyPrefab, transform.position, Quaternion.identity);
+        yield return wait;
+    }
+}</code></pre>
+
+                <h3>Wait for a condition</h3>
+                <pre><code class="language-csharp">private IEnumerator WaitForLoad()
+{
+    yield return new WaitUntil(() =&gt; assetLoader.IsReady);
+    Debug.Log("Loaded — continue.");
+}</code></pre>
+
+                <div class="card card-success">
+                    <h4>✅ Coroutines pair beautifully with events (Lesson 3.2)</h4>
+                    <p>A common combo: raise an event to <em>announce</em> something happened, and start a coroutine to <em>play out</em> the timed reaction (flash, delay, then reset). Events say "what," coroutines say "over what span of time."</p>
+                </div>
+            </section>
+
+            <!-- Section 5: Stopping -->
+            <section id="stopping" class="lesson-section">
+                <h2>Stopping &amp; Lifecycle Gotchas</h2>
+                <p>Coroutines are tied to the MonoBehaviour that started them, which leads to important rules:</p>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>Event</th><th>What happens to the coroutine</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>GameObject <strong>destroyed</strong></td><td>Coroutine stops immediately (and won't finish its remaining code).</td></tr>
+                            <tr><td>GameObject/component <strong>disabled</strong> (<code>SetActive(false)</code> / <code>enabled = false</code>)</td><td>Coroutine stops. Re-enabling does <em>not</em> resume it.</td></tr>
+                            <tr><td>You call <code>StopCoroutine</code> / <code>StopAllCoroutines</code></td><td>Stops that coroutine (or all on this MonoBehaviour).</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <pre><code class="language-csharp">private Coroutine spawner;
+
+void OnEnable()  =&gt; spawner = StartCoroutine(SpawnWaves());
+void OnDisable() =&gt; StopCoroutine(spawner);   // tidy stop; also happens automatically
+
+// Stop by handle is precise; StopAllCoroutines() stops every coroutine on this component.</code></pre>
+
+                <div class="card card-warning">
+                    <h4>⚠️ Disabling stops coroutines — a frequent surprise</h4>
+                    <p>If a coroutine "mysteriously stops halfway," check whether its GameObject got deactivated. A coroutine on a disabled object is dead, not paused. If you need work to continue regardless, run it on a separate always-active manager object, or use <code>async</code> (next section) which isn't tied to enable state — with its own caveats.</p>
+                </div>
+
+                <blockquote>
+                    <strong>💡 Starting by method name:</strong> you can also <code>StartCoroutine("SpawnWaves")</code> with a string, which lets <code>StopCoroutine("SpawnWaves")</code> stop it by name — but the string form is slower and typo-prone. Prefer starting with the method call and stopping via the returned <code>Coroutine</code> handle.</p>
+                </blockquote>
+            </section>
+
+            <!-- Section 6: async/await -->
+            <section id="async" class="lesson-section">
+                <h2>Coroutines vs async/await</h2>
+                <p>C# has its own way to write code that waits without blocking: <code>async</code>/<code>await</code> (Intermediate C#). It works in Unity too, and Unity 6 adds <code>Awaitable</code> to make it first-class. So when do you use which?</p>
+
+                <pre><code class="language-csharp">using UnityEngine;
+
+public class Door : MonoBehaviour
+{
+    // Unity 6's Awaitable makes async play nicely with the frame loop.
+    private async void Start()
+    {
+        Debug.Log("Waiting...");
+        await Awaitable.WaitForSecondsAsync(3f);   // non-blocking, resumes on main thread
+        Debug.Log("Opening!");
+        transform.Translate(Vector3.up * 3f);
+    }
+}</code></pre>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th></th><th>Coroutines</th><th>async / await</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Tied to a MonoBehaviour's enable/lifetime</td><td>✅ Yes (auto-stops)</td><td>❌ No — keeps running after the object dies unless you cancel</td></tr>
+                            <tr><td>Return a value</td><td>❌ Awkward</td><td>✅ <code>Task&lt;T&gt;</code> / <code>Awaitable&lt;T&gt;</code></td></tr>
+                            <tr><td>Real background-thread work (heavy CPU)</td><td>❌ No (main thread only)</td><td>✅ Yes (with care returning to main thread)</td></tr>
+                            <tr><td>Integrates with .NET APIs (web requests, file I/O)</td><td>Clunky</td><td>✅ Natural</td></tr>
+                            <tr><td>Simplicity for timed game logic</td><td>✅ Very simple</td><td>More moving parts</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="card card-warning">
+                    <h4>⚠️ The big async gotcha in Unity</h4>
+                    <p>An <code>async</code> method is <strong>not</strong> tied to the object's lifecycle. If the GameObject is destroyed while an <code>await</code> is pending, the continuation may still run and touch a destroyed object — throwing errors or worse. You must guard with a <code>CancellationToken</code> (Unity 6 offers <code>destroyCancellationToken</code> on MonoBehaviour) or check <code>this != null</code> after awaits. Coroutines don't have this problem because Unity stops them automatically. Also avoid <code>async void</code> except for event handlers — prefer <code>async Awaitable</code>/<code>Task</code> so errors surface.</p>
+                </div>
+
+                <div class="card card-success">
+                    <h4>✅ Rule of thumb</h4>
+                    <p><strong>Coroutines</strong> for game-flow timing that should live and die with the object — delays, sequences, spawners, fades. <strong>async/await</strong> for value-returning operations, real asynchronous I/O (loading, web, addressables), and heavy work you want off the main thread. When in doubt for gameplay, reach for a coroutine — it's simpler and self-cleaning.</p>
+                </div>
+            </section>
+
+            <!-- Section 7: Exercise & Quiz -->
+            <section id="exercise" class="lesson-section">
+                <h2>Exercise &amp; Quiz</h2>
+
+                <div class="card card-info">
+                    <h3>🏋️ Exercise: Delayed Door + Countdown</h3>
+                    <p><strong>Objective:</strong> Use coroutines for a timed sequence and a per-frame effect.</p>
+
+                    <h4>Instructions:</h4>
+                    <ol>
+                        <li>Create a Cube <code>Door</code>. Write a coroutine <code>OpenAfterDelay</code> that waits 3 seconds, then moves the door up — start it from <code>Start</code>.</li>
+                        <li>Add a countdown: before opening, log "3", "2", "1" one second apart using <code>WaitForSeconds</code> in a loop (cache the wait).</li>
+                        <li>Make the door move <em>smoothly</em> over 1 second using a <code>while</code> loop with <code>yield return null</code> and <code>Time.deltaTime</code> (interpolate the position) rather than teleporting.</li>
+                        <li>Bonus: add a <code>StopCoroutine</code> path — pressing <code>Escape</code> cancels the opening before it finishes.</li>
+                        <li>Reflect: what happens to the coroutine if you deactivate the Door mid-countdown? (It stops and won't resume.)</li>
+                    </ol>
+
+                    <h4>Starter Code:</h4>
+                    <pre><code class="language-csharp">using System.Collections;
+using UnityEngine;
+
+public class Door : MonoBehaviour
+{
+    [SerializeField] private float openHeight = 3f;
+    [SerializeField] private float moveDuration = 1f;
+
+    void Start() =&gt; StartCoroutine(OpenSequence());
+
+    private IEnumerator OpenSequence()
+    {
+        // TODO: count down 3..2..1 (WaitForSeconds), then smoothly raise the door.
+        yield return null;
+    }
+}</code></pre>
+
+                    <details>
+                        <summary>💡 Hint</summary>
+                        <p>Countdown: <code>for (int i = 3; i &gt; 0; i--) { Debug.Log(i); yield return wait; }</code> with a cached <code>WaitForSeconds wait = new(1f);</code>. Smooth move: capture <code>Vector3 start = transform.position;</code> and <code>Vector3 end = start + Vector3.up * openHeight;</code>, then loop <code>elapsed += Time.deltaTime</code>, set <code>transform.position = Vector3.Lerp(start, end, elapsed / moveDuration)</code>, <code>yield return null</code>.</p>
+                    </details>
+
+                    <details>
+                        <summary>✅ Solution</summary>
+                        <pre><code class="language-csharp">using System.Collections;
+using UnityEngine;
+
+public class Door : MonoBehaviour
+{
+    [SerializeField] private float openHeight = 3f;
+    [SerializeField] private float moveDuration = 1f;
+
+    void Start() =&gt; StartCoroutine(OpenSequence());
+
+    private IEnumerator OpenSequence()
+    {
+        var oneSecond = new WaitForSeconds(1f);   // cached, no per-loop allocation
+
+        for (int i = 3; i &gt; 0; i--)
+        {
+            Debug.Log(i);
+            yield return oneSecond;
+        }
+        Debug.Log("Opening!");
+
+        Vector3 start = transform.position;
+        Vector3 end = start + Vector3.up * openHeight;
+        float elapsed = 0f;
+
+        while (elapsed &lt; moveDuration)
+        {
+            elapsed += Time.deltaTime;
+            transform.position = Vector3.Lerp(start, end, elapsed / moveDuration);
+            yield return null;                    // one frame; smooth over moveDuration
+        }
+        transform.position = end;                 // snap to exact final position
+    }
+}</code></pre>
+                        <p>The countdown uses timed waits; the smooth move uses per-frame <code>yield return null</code> with <code>Lerp</code>. Two of the most common coroutine shapes in one method — and it all stops automatically if the door is destroyed.</p>
+                    </details>
+                </div>
+
+                <!-- Quiz Section -->
+                <div class="card quiz-container">
+                    <h3>🎯 Quick Quiz</h3>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 1:</strong> Why is <code>Thread.Sleep(3000)</code> the wrong way to "wait 3 seconds" in Unity?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="It compiles fine — the problem is what it does at runtime.">
+                                A) It doesn't compile in Unity.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! It blocks the single main thread, freezing rendering, input, and everything else for 3 seconds.">
+                                B) It blocks the main thread, freezing the entire game for 3 seconds.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="It's not about precision — it's about blocking the game loop.">
+                                C) It's not accurate enough for game timing.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 2:</strong> A coroutine does <code>yield return new WaitForSeconds(2f)</code>, but the game is paused with <code>Time.timeScale = 0</code>. What happens?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="Scaled time is frozen at 0, so the 2 seconds never accumulate.">
+                                A) It still resumes after 2 real seconds.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! WaitForSeconds uses scaled time, so at timeScale 0 it never completes. Use WaitForSecondsRealtime to ignore pause.">
+                                B) It never resumes — <code>WaitForSeconds</code> uses scaled time; use <code>WaitForSecondsRealtime</code> instead.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="Pausing doesn't throw; the coroutine just stalls.">
+                                C) It throws an exception.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 3:</strong> Which is a genuine advantage of <code>async</code>/<code>await</code> over coroutines?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="Auto-stopping with the object is a coroutine strength, not async's.">
+                                A) It automatically stops when the GameObject is destroyed.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! async methods can return values (Task<T>/Awaitable<T>) and integrate naturally with .NET async I/O and background work.">
+                                B) It can return a value and integrates naturally with async I/O and background work.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="Coroutines are actually simpler for basic timed game logic.">
+                                C) It's always simpler than a coroutine for timed game logic.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section 8: Summary -->
+            <section id="summary" class="lesson-section">
+                <h2>Summary</h2>
+
+                <div class="card card-success">
+                    <h3>🎉 Key Takeaways</h3>
+                    <ul>
+                        <li>Never block Unity's main thread (<code>Thread.Sleep</code>) — it freezes the whole game. Spread timed work across frames instead.</li>
+                        <li>A <strong>coroutine</strong> is an <code>IEnumerator</code> method that <code>yield return</code>s to pause and resume; launch it with <code>StartCoroutine</code>. It runs on the main thread, not a separate one.</li>
+                        <li>The yield you return sets the resume point: <code>null</code> (next frame), <code>WaitForSeconds</code>/<code>WaitForSecondsRealtime</code>, <code>WaitUntil</code>, <code>WaitForFixedUpdate</code>, or another coroutine.</li>
+                        <li>Coroutines are tied to their MonoBehaviour: <strong>disabling or destroying the object stops them</strong> (and re-enabling doesn't resume). Cache <code>WaitForSeconds</code> to avoid per-loop allocations.</li>
+                        <li><strong>async/await</strong> (with Unity 6's <code>Awaitable</code>) suits value-returning ops, real async I/O, and background work — but is <em>not</em> auto-stopped by object lifecycle; guard with a cancellation token.</li>
+                        <li>Default to coroutines for gameplay timing (delays, sequences, fades); reach for async when you need return values or true asynchrony.</li>
+                    </ul>
+                </div>
+
+                <h3>📚 Additional Resources</h3>
+                <ul>
+                    <li><a href="https://docs.unity3d.com/Manual/Coroutines.html" target="_blank" rel="noopener">Manual — Coroutines</a></li>
+                    <li><a href="https://docs.unity3d.com/ScriptReference/MonoBehaviour.StartCoroutine.html" target="_blank" rel="noopener">Scripting Reference — StartCoroutine</a></li>
+                    <li><a href="https://docs.unity3d.com/ScriptReference/Awaitable.html" target="_blank" rel="noopener">Scripting Reference — Awaitable (Unity 6)</a></li>
+                    <li><a href="https://docs.unity3d.com/Manual/AwaitSupport.html" target="_blank" rel="noopener">Manual — Asynchronous programming with Awaitable</a></li>
+                </ul>
+
+                <h3>🚀 What's Next?</h3>
+                <p>That completes <strong>Module 3 — Structuring Game Code</strong>: data assets, decoupled events, and time-based logic. Module 4 builds the systems that hold a whole game together. Lesson 4.1, <em>Game State and Managers</em>, covers singletons, scene management, and the central controllers that coordinate everything you've built.</p>
+
+                <!-- Encouragement Card -->
+                <div class="card card-accent" style="text-align: center; padding: 2rem;">
+                    <h3>🎉 Module 3 complete!</h3>
+                    <p>You can now sequence gameplay over time without freezing a frame. Delays, cutscenes, fades, waves — the tempo of your game is now in your hands.</p>
+                </div>
+            </section>
+
+            <!-- Lesson Navigation -->
+            <nav class="lesson-nav" aria-label="Lesson Navigation">
+                <a href="lesson_08.html" class="prev-lesson">← Previous: Lesson 3.2 — Events and Decoupling</a>
+                <a href="index.html" class="home-link">🏠 Course Home</a>
+                <a href="lesson_10.html" class="next-lesson">Next: Lesson 4.1 — Game State and Managers →</a>
+            </nav>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+        <p>&copy; 2026 Ray de la Paz. All rights reserved.</p>
+        <div class="footer-links">
+            <a href="https://rays-home.netlify.app/">Ray's House of Fun</a>
+            <a href="https://rays-home.netlify.app/contact">Contact</a>
+            <a href="#" id="print-button">Print Page</a>
+        </div>
+        <p><small>Press <kbd>?</kbd> for keyboard shortcuts</small></p>
+    </footer>
+
+    <!-- JavaScript -->
+    <script src="js/clipboard.js"></script>
+    <script src="js/course-enhancements.js"></script>
+</body>
+</html>

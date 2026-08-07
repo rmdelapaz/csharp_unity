@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Persist game data in Unity — PlayerPrefs for settings, JSON serialization with JsonUtility, writing to persistentDataPath, and a reusable SaveManager.">
+    <meta name="author" content="Ray de la Paz">
+    <title>Lesson 4.3: Saving and Loading - C# Scripting in Unity</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="icon" type="image/png" href="favicon.png">
+    <!-- Mermaid — initialized by course-enhancements.js for theme awareness -->
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        window.__mermaid = mermaid;
+        // Initial config — JS will re-init on theme change
+        const isDark = localStorage.getItem('theme') === 'dark' ||
+            (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: isDark ? 'dark' : 'default',
+            themeVariables: isDark
+                ? { primaryColor: '#334155', primaryTextColor: '#e2e8f0', primaryBorderColor: '#6366f1', lineColor: '#94a3b8', secondaryColor: '#1e293b', tertiaryColor: '#0f172a' }
+                : { primaryColor: '#eff6ff', primaryTextColor: '#1e293b', primaryBorderColor: '#3b82f6', lineColor: '#64748b', secondaryColor: '#f8fafc', tertiaryColor: '#f1f5f9' }
+        });
+    </script>
+</head>
+<body>
+    <!-- Skip to main content for accessibility -->
+    <a href="#main-content" class="skip-to-main">Skip to main content</a>
+
+
+    <!-- Navigation -->
+    <nav class="main-nav">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo">C# Scripting in Unity</a>
+            <button id="mobile-menu-toggle" class="mobile-menu-toggle" aria-expanded="false" aria-controls="nav-links">
+                ☰
+            </button>
+            <div class="nav-links" id="nav-links">
+                <a href="index.html">Home</a>
+                <a href="index.html#modules">All Modules</a>
+                <span class="nav-divider"></span>
+                <a href="https://rays-home.netlify.app/">Ray's House of Fun</a>
+                <a href="https://rays-home.netlify.app/contact">Contact</a>
+                <button id="theme-toggle" aria-label="Toggle dark/light mode">🌙</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Breadcrumb -->
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+        <ul>
+            <li><a href="index.html">Home</a></li>
+            <li><a href="index.html#modules">Module 4</a></li>
+            <li aria-current="page">Lesson 4.3: Saving and Loading</li>
+        </ul>
+    </nav>
+
+    <!-- Main Content -->
+    <main id="main-content">
+        <div class="container">
+            <!-- Lesson Header -->
+            <header>
+                <h1>📝 Lesson 4.3: Saving and Loading</h1>
+                <p class="lead">A game the player can't come back to is only half a game. This lesson makes progress <strong>persist</strong> between sessions: <code>PlayerPrefs</code> for simple settings, and JSON serialization to write structured save data to disk — reusing the files &amp; JSON skills from the Intermediate C# course, now the Unity way.</p>
+
+                <!-- Learning objectives -->
+                <div class="card card-info">
+                    <h2>🎯 Learning Objectives</h2>
+                    <p>By the end of this lesson, you will be able to:</p>
+                    <ul>
+                        <li>Store simple values with <code>PlayerPrefs</code> and know its limits</li>
+                        <li>Serialize a <code>[System.Serializable]</code> data class to JSON with <code>JsonUtility</code></li>
+                        <li>Write and read save files at <code>Application.persistentDataPath</code></li>
+                        <li>Build a reusable <code>SaveManager</code> with <code>Save()</code>/<code>Load()</code></li>
+                        <li>Recognize <code>JsonUtility</code>'s limitations and security caveats</li>
+                        <li>Choose the right persistence tool for settings vs full save games</li>
+                    </ul>
+                    <p><strong>Estimated Time:</strong> 60 minutes</p>
+                    <p><strong>Project:</strong> A <code>SaveManager</code> that writes the player's level, score, and position to a JSON file and restores them on load.</p>
+                </div>
+            </header>
+
+            <!-- Sticky Table of Contents -->
+            <details class="card toc-card" open>
+                <summary aria-label="Toggle table of contents">
+                    <span class="toc-icon" aria-hidden="true">📑</span>
+                    <span class="toc-label">In This Lesson</span>
+                    <span class="toc-chevron" aria-hidden="true">▾</span>
+                </summary>
+                <nav aria-label="Table of Contents">
+                    <ol>
+                        <li><a href="#introduction" class="toc-link">What Persistence Means</a></li>
+                        <li><a href="#playerprefs" class="toc-link">PlayerPrefs for Settings</a></li>
+                        <li><a href="#json" class="toc-link">JSON Serialization</a></li>
+                        <li><a href="#disk" class="toc-link">Writing to Disk</a></li>
+                        <li><a href="#savemanager" class="toc-link">A SaveManager</a></li>
+                        <li><a href="#gotchas" class="toc-link">Limits &amp; Gotchas</a></li>
+                        <li><a href="#exercise" class="toc-link">Exercise &amp; Quiz</a></li>
+                        <li><a href="#summary" class="toc-link">Summary</a></li>
+                    </ol>
+                </nav>
+            </details>
+
+            <!-- Section 1: Persistence -->
+            <section id="introduction" class="lesson-section">
+                <h2>What Persistence Means</h2>
+                <p>Everything so far lives in memory and vanishes when the game closes — the <code>GameManager</code>'s score, the player's position, unlocked levels. <strong>Persistence</strong> means writing that data somewhere durable (the disk) so it can be read back next session.</p>
+
+                <p>Two questions shape every save system:</p>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>Question</th><th>Answered by</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td><strong>What format?</strong> How is the data turned into bytes?</td><td>Serialization — here, <strong>JSON</strong> (or <code>PlayerPrefs</code>' key-value store)</td></tr>
+                            <tr><td><strong>Where does it live?</strong> Which file/location on the device?</td><td><code>Application.persistentDataPath</code> (a safe, writable folder)</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="card card-info">
+                    <h4>💡 You already know serialization</h4>
+                    <p>The Intermediate C# course covered files and JSON. Unity uses the same ideas: convert an object to text, write text to a file, read it back, convert text to an object. The Unity-specific parts are just <em>which</em> helper (<code>JsonUtility</code>) and <em>where</em> to write (<code>persistentDataPath</code>).</p>
+                </div>
+            </section>
+
+            <!-- Section 2: PlayerPrefs -->
+            <section id="playerprefs" class="lesson-section">
+                <h2>PlayerPrefs for Settings</h2>
+                <p><code>PlayerPrefs</code> is Unity's built-in key-value store for <em>small, simple</em> values — volume, difficulty, a high score. It handles the file for you; you just get and set by string key.</p>
+
+                <pre><code class="language-csharp">using UnityEngine;
+
+// Save
+PlayerPrefs.SetInt("HighScore", 1200);
+PlayerPrefs.SetFloat("Volume", 0.8f);
+PlayerPrefs.SetString("PlayerName", "Ray");
+PlayerPrefs.Save();   // flush to disk (also happens on normal quit)
+
+// Load — the second argument is the default if the key doesn't exist yet.
+int highScore = PlayerPrefs.GetInt("HighScore", 0);
+float volume  = PlayerPrefs.GetFloat("Volume", 1f);
+
+if (PlayerPrefs.HasKey("PlayerName"))
+    Debug.Log(PlayerPrefs.GetString("PlayerName"));</code></pre>
+
+                <div class="card card-warning">
+                    <h4>⚠️ PlayerPrefs is for preferences, not save games</h4>
+                    <p>It only stores <code>int</code>, <code>float</code>, and <code>string</code> — no structured data. It's stored in plain, easily-edited locations (the registry on Windows), so it's <strong>not secure</strong> and not meant for large or important data. Use it for settings and trivial values; use JSON files (below) for actual game saves.</p>
+                </div>
+
+                <blockquote>
+                    <strong>💡 Default values matter:</strong> always pass a default to <code>GetInt</code>/<code>GetFloat</code>/<code>GetString</code>. On a first run the key doesn't exist, and the default is what a new player gets. <code>PlayerPrefs.DeleteKey("HighScore")</code> or <code>DeleteAll()</code> clears values (handy for a "reset progress" button).
+                </blockquote>
+            </section>
+
+            <!-- Section 3: JSON -->
+            <section id="json" class="lesson-section">
+                <h2>JSON Serialization</h2>
+                <p>Real save data is <em>structured</em> — a level number, a score, a position, a list of unlocked items. The clean approach: put it all in a plain data class, then convert that class to a JSON string with <code>JsonUtility</code>.</p>
+
+                <p>First, a serializable data class. The <code>[System.Serializable]</code> attribute tells Unity it can turn this into JSON (and show it in the Inspector):</p>
+                <pre><code class="language-csharp">using System;
+using UnityEngine;
+
+[Serializable]
+public class SaveData
+{
+    public int level;
+    public int score;
+    public Vector3 playerPosition;
+    public string[] unlockedItems;
+}</code></pre>
+
+                <p>Then convert to and from JSON text with two static methods:</p>
+                <pre><code class="language-csharp">SaveData data = new SaveData
+{
+    level = 3,
+    score = 1500,
+    playerPosition = player.transform.position,
+    unlockedItems = new[] { "sword", "shield" }
+};
+
+// Object → JSON string (the 'true' pretty-prints with indentation).
+string json = JsonUtility.ToJson(data, true);
+
+// JSON string → object.
+SaveData loaded = JsonUtility.FromJson&lt;SaveData&gt;(json);
+Debug.Log($"Level {loaded.level}, score {loaded.score}");</code></pre>
+
+                <div class="card card-accent">
+                    <h4>📖 What gets serialized?</h4>
+                    <p><code>JsonUtility</code> serializes <strong>public fields</strong> (and <code>[SerializeField] private</code> ones) of a <code>[Serializable]</code> type — the same rules as the Inspector (Lesson 1.3). It handles primitives, strings, enums, Unity structs like <code>Vector3</code>, arrays, <code>List&lt;T&gt;</code>, and nested <code>[Serializable]</code> classes. It does <strong>not</strong> serialize properties, static fields, or <code>Dictionary</code>.</p>
+                </div>
+
+                <p>The resulting JSON is human-readable text — great for debugging:</p>
+                <pre><code class="language-csharp">{
+    "level": 3,
+    "score": 1500,
+    "playerPosition": { "x": 4.0, "y": 0.0, "z": -2.0 },
+    "unlockedItems": ["sword", "shield"]
+}</code></pre>
+            </section>
+
+            <!-- Section 4: Disk -->
+            <section id="disk" class="lesson-section">
+                <h2>Writing to Disk</h2>
+                <p>JSON is just a string; now write it to a file. The one Unity-specific rule: save to <code>Application.persistentDataPath</code>, a per-user, writable folder that survives app updates and differs per platform (Unity picks the correct location on each device).</p>
+
+                <pre><code class="language-csharp">using System.IO;   // File, Path — standard .NET (Intermediate C#)
+using UnityEngine;
+
+string path = Path.Combine(Application.persistentDataPath, "save.json");
+
+// Write
+File.WriteAllText(path, json);
+
+// Read (only if it exists)
+if (File.Exists(path))
+{
+    string loadedJson = File.ReadAllText(path);
+    SaveData data = JsonUtility.FromJson&lt;SaveData&gt;(loadedJson);
+}</code></pre>
+
+                <div class="mermaid">
+                    graph LR
+                    OBJ["SaveData object<br/>(in memory)"] -->|"JsonUtility.ToJson"| JSON["JSON string"]
+                    JSON -->|"File.WriteAllText"| FILE["save.json on disk"]
+                    FILE -->|"File.ReadAllText"| JSON2["JSON string"]
+                    JSON2 -->|"JsonUtility.FromJson"| OBJ2["SaveData object"]
+                    style OBJ fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                    style FILE fill:#eff6ff,stroke:#3b82f6,stroke-width:2px
+                    style OBJ2 fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+                </div>
+
+                <div class="card card-warning">
+                    <h4>⚠️ Never hardcode a path — and never use <code>Assets/</code></h4>
+                    <p>Use <code>Application.persistentDataPath</code>, not a literal like <code>"C:/saves/"</code> (won't exist on other machines) and not your project's <code>Assets</code> folder (read-only in a built game). <code>Path.Combine</code> joins folder and filename with the right separator for the platform. To find the folder while testing, <code>Debug.Log(Application.persistentDataPath)</code> and open it.</p>
+                </div>
+            </section>
+
+            <!-- Section 5: SaveManager -->
+            <section id="savemanager" class="lesson-section">
+                <h2>A SaveManager</h2>
+                <p>Wrap all of this in a single manager (Lesson 4.1) so the rest of your game just calls <code>SaveManager.Instance.Save()</code> / <code>Load()</code> and never touches paths or JSON directly.</p>
+
+                <pre><code class="language-csharp">using System.IO;
+using UnityEngine;
+
+public class SaveManager : MonoBehaviour
+{
+    public static SaveManager Instance { get; private set; }
+
+    private string SavePath =&gt; Path.Combine(Application.persistentDataPath, "save.json");
+
+    void Awake()
+    {
+        if (Instance != null &amp;&amp; Instance != this) { Destroy(gameObject); return; }
+        Instance = this;
+        DontDestroyOnLoad(gameObject);
+    }
+
+    public void Save(SaveData data)
+    {
+        string json = JsonUtility.ToJson(data, true);
+        File.WriteAllText(SavePath, json);
+        Debug.Log($"Saved to {SavePath}");
+    }
+
+    public SaveData Load()
+    {
+        if (!File.Exists(SavePath))
+            return null;   // no save yet — caller starts fresh
+
+        string json = File.ReadAllText(SavePath);
+        return JsonUtility.FromJson&lt;SaveData&gt;(json);
+    }
+
+    public bool HasSave() =&gt; File.Exists(SavePath);
+
+    public void DeleteSave()
+    {
+        if (File.Exists(SavePath)) File.Delete(SavePath);
+    }
+}</code></pre>
+
+                <div class="card card-success">
+                    <h4>✅ Gathering and applying data</h4>
+                    <p>The manager handles <em>storage</em>; something still has to <em>collect</em> the values into a <code>SaveData</code> before saving, and <em>apply</em> them after loading. A common pattern: the <code>GameManager</code> builds a <code>SaveData</code> from the current state, calls <code>SaveManager.Save(data)</code>; on load it reads the values back and restores score, level, and player position. Keep "what to save" near the systems that own the data.</p>
+                </div>
+
+                <blockquote>
+                    <strong>💡 When to save:</strong> at checkpoints, on level complete, or on quit (<code>OnApplicationQuit</code> / <code>OnApplicationPause</code> on mobile). Avoid saving every frame — disk writes are slow and cause hitches.
+                </blockquote>
+            </section>
+
+            <!-- Section 6: Gotchas -->
+            <section id="gotchas" class="lesson-section">
+                <h2>Limits &amp; Gotchas</h2>
+                <p><code>JsonUtility</code> is fast and built-in, but deliberately minimal. Know its edges before you hit them:</p>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>Limitation</th><th>Workaround</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>No <code>Dictionary</code> support</td><td>Store parallel <code>List</code>s, or a <code>List</code> of a <code>[Serializable]</code> key-value struct</td></tr>
+                            <tr><td>No polymorphism (can't serialize a base-typed field holding a derived object)</td><td>Flatten the data, or use a type tag + switch; or use a richer library</td></tr>
+                            <tr><td>Top-level must be an object, not a raw array</td><td>Wrap the array in a class with a <code>List</code>/array field</td></tr>
+                            <tr><td>Only fields, not properties</td><td>Use fields in save classes (or back properties with serialized fields)</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="card card-warning">
+                    <h4>⚠️ Saves are plain text — not secure</h4>
+                    <p>A JSON save file is human-readable and trivially editable — a player can open <code>save.json</code> and set their score to a million. For a single-player game that's often fine. If tampering matters (leaderboards, competitive play), add a checksum/hash, encrypt the data, or validate server-side. Don't rely on obscurity.</p>
+                </div>
+
+                <div class="card card-info">
+                    <h4>💡 Beyond JsonUtility</h4>
+                    <p>For features <code>JsonUtility</code> lacks — dictionaries, polymorphism, populating existing objects — the popular <strong>Newtonsoft Json.NET</strong> (available as a Unity package) is the go-to. There's also <code>FromJsonOverwrite</code> to load values <em>into</em> an existing object rather than creating a new one. And always plan for <strong>versioning</strong>: add a <code>version</code> field to <code>SaveData</code> now, so a future update can migrate old saves instead of breaking them.</p>
+                </div>
+            </section>
+
+            <!-- Section 7: Exercise & Quiz -->
+            <section id="exercise" class="lesson-section">
+                <h2>Exercise &amp; Quiz</h2>
+
+                <div class="card card-info">
+                    <h3>🏋️ Exercise: Save and Restore the Player</h3>
+                    <p><strong>Objective:</strong> Persist level, score, and player position to a JSON file, then restore them on the next run.</p>
+
+                    <h4>Instructions:</h4>
+                    <ol>
+                        <li>Create the <code>[Serializable] SaveData</code> class (level, score, <code>Vector3</code> position) — add a <code>version</code> field for future-proofing.</li>
+                        <li>Write the <code>SaveManager</code> singleton (Section 5) with <code>Save(SaveData)</code>, <code>Load()</code>, and <code>HasSave()</code>.</li>
+                        <li>On a key press (e.g. <code>F5</code>), build a <code>SaveData</code> from current values and call <code>Save</code>. On <code>F9</code>, <code>Load</code> and apply the values (move the player, set the score).</li>
+                        <li><code>Debug.Log(Application.persistentDataPath)</code>, open the folder, and inspect the pretty-printed <code>save.json</code>.</li>
+                        <li>Stop and restart Play mode, press <code>F9</code>, and confirm the player returns to the saved position with the saved score.</li>
+                    </ol>
+
+                    <h4>Starter Code:</h4>
+                    <pre><code class="language-csharp">using System;
+using UnityEngine;
+
+[Serializable]
+public class SaveData
+{
+    public int version = 1;
+    public int level;
+    public int score;
+    public Vector3 playerPosition;
+}
+
+public class SaveManager : MonoBehaviour
+{
+    public static SaveManager Instance { get; private set; }
+
+    void Awake()
+    {
+        // TODO: singleton guard + DontDestroyOnLoad.
+    }
+
+    // TODO: Save(SaveData), Load(), HasSave() using JsonUtility + File + persistentDataPath.
+}</code></pre>
+
+                    <details>
+                        <summary>💡 Hint</summary>
+                        <p>Path: <code>Path.Combine(Application.persistentDataPath, "save.json")</code>. Save: <code>File.WriteAllText(path, JsonUtility.ToJson(data, true))</code>. Load: guard with <code>File.Exists</code>, then <code>JsonUtility.FromJson&lt;SaveData&gt;(File.ReadAllText(path))</code>. To apply position: <code>player.transform.position = data.playerPosition;</code>.</p>
+                    </details>
+
+                    <details>
+                        <summary>✅ Solution</summary>
+                        <pre><code class="language-csharp">using System;
+using System.IO;
+using UnityEngine;
+
+[Serializable]
+public class SaveData
+{
+    public int version = 1;
+    public int level;
+    public int score;
+    public Vector3 playerPosition;
+}
+
+public class SaveManager : MonoBehaviour
+{
+    public static SaveManager Instance { get; private set; }
+    private string SavePath =&gt; Path.Combine(Application.persistentDataPath, "save.json");
+
+    void Awake()
+    {
+        if (Instance != null &amp;&amp; Instance != this) { Destroy(gameObject); return; }
+        Instance = this;
+        DontDestroyOnLoad(gameObject);
+    }
+
+    public void Save(SaveData data)
+    {
+        File.WriteAllText(SavePath, JsonUtility.ToJson(data, true));
+        Debug.Log($"Saved to {SavePath}");
+    }
+
+    public SaveData Load()
+    {
+        if (!File.Exists(SavePath)) return null;
+        return JsonUtility.FromJson&lt;SaveData&gt;(File.ReadAllText(SavePath));
+    }
+
+    public bool HasSave() =&gt; File.Exists(SavePath);
+}</code></pre>
+                        <pre><code class="language-csharp">using UnityEngine;
+
+public class SaveTester : MonoBehaviour
+{
+    [SerializeField] private Transform player;
+    [SerializeField] private int level = 1;
+    [SerializeField] private int score;
+
+    void Update()
+    {
+        if (Input.GetKeyDown(KeyCode.F5))
+        {
+            SaveManager.Instance.Save(new SaveData
+            {
+                level = level,
+                score = score,
+                playerPosition = player.position
+            });
+        }
+
+        if (Input.GetKeyDown(KeyCode.F9))
+        {
+            SaveData data = SaveManager.Instance.Load();
+            if (data != null)
+            {
+                level = data.level;
+                score = data.score;
+                player.position = data.playerPosition;
+                Debug.Log($"Loaded: level {level}, score {score}");
+            }
+        }
+    }
+}</code></pre>
+                        <p>Storage lives in the <code>SaveManager</code>; gathering/applying lives with the systems that own the data. The <code>version</code> field costs nothing now and saves you from broken saves after a future update.</p>
+                    </details>
+                </div>
+
+                <!-- Quiz Section -->
+                <div class="card quiz-container">
+                    <h3>🎯 Quick Quiz</h3>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 1:</strong> Which is the right tool for a full structured save game (level, score, position, inventory)?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="PlayerPrefs only holds int/float/string — no structured data.">
+                                A) <code>PlayerPrefs</code>, one key per value.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! Serialize a [Serializable] data class to JSON with JsonUtility and write it to persistentDataPath.">
+                                B) A <code>[Serializable]</code> class serialized to JSON and written to <code>persistentDataPath</code>.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="The Assets folder is read-only in a built game — you can't write saves there.">
+                                C) A text file in the project's <code>Assets</code> folder.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 2:</strong> Where should game save files be written?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="A hardcoded absolute path won't exist on other machines/platforms.">
+                                A) A hardcoded path like <code>C:/MyGame/save.json</code>.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! Application.persistentDataPath is a per-user, writable, platform-correct folder that survives updates.">
+                                B) <code>Application.persistentDataPath</code>.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="Assets is read-only at runtime in a build.">
+                                C) The project's <code>Assets</code> folder.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+
+                    <div class="quiz-question">
+                        <p><strong>Question 3:</strong> Which does <code>JsonUtility</code> <em>not</em> serialize out of the box?</p>
+                        <div class="quiz-options">
+                            <button class="quiz-option" data-correct="false" data-hint="Vector3 is a Unity struct and serializes fine.">
+                                A) A <code>Vector3</code> field.
+                            </button>
+                            <button class="quiz-option" data-correct="false" data-hint="Arrays and Lists of serializable types are supported.">
+                                B) A <code>string[]</code> array.
+                            </button>
+                            <button class="quiz-option" data-correct="true" data-explanation="Correct! JsonUtility doesn't support Dictionary (nor properties/polymorphism). Use parallel lists or a richer library like Json.NET.">
+                                C) A <code>Dictionary&lt;string, int&gt;</code>.
+                            </button>
+                        </div>
+                        <div class="quiz-feedback"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section 8: Summary -->
+            <section id="summary" class="lesson-section">
+                <h2>Summary</h2>
+
+                <div class="card card-success">
+                    <h3>🎉 Key Takeaways</h3>
+                    <ul>
+                        <li>Persistence answers two questions: <strong>what format</strong> (JSON / PlayerPrefs) and <strong>where</strong> (<code>Application.persistentDataPath</code>).</li>
+                        <li><strong>PlayerPrefs</strong> stores simple <code>int</code>/<code>float</code>/<code>string</code> settings by key — convenient but not for structured or sensitive data. Always pass a default when reading.</li>
+                        <li>For real saves, put data in a <strong><code>[Serializable]</code></strong> class and use <code>JsonUtility.ToJson</code>/<code>FromJson</code>; write with <code>File.WriteAllText</code> to <code>persistentDataPath</code>.</li>
+                        <li>Wrap it in a <strong><code>SaveManager</code></strong> singleton so the game calls <code>Save()</code>/<code>Load()</code> without touching paths or JSON.</li>
+                        <li><code>JsonUtility</code> limits: no <code>Dictionary</code>, no polymorphism, fields only, top-level must be an object. Reach for <strong>Json.NET</strong> when you outgrow it.</li>
+                        <li>Saves are <strong>plain text</strong> — editable and insecure by default. Add a <code>version</code> field for migration; hash/encrypt if tampering matters.</li>
+                    </ul>
+                </div>
+
+                <h3>📚 Additional Resources</h3>
+                <ul>
+                    <li><a href="https://docs.unity3d.com/ScriptReference/JsonUtility.html" target="_blank" rel="noopener">Scripting Reference — JsonUtility</a></li>
+                    <li><a href="https://docs.unity3d.com/ScriptReference/PlayerPrefs.html" target="_blank" rel="noopener">Scripting Reference — PlayerPrefs</a></li>
+                    <li><a href="https://docs.unity3d.com/ScriptReference/Application-persistentDataPath.html" target="_blank" rel="noopener">Scripting Reference — Application.persistentDataPath</a></li>
+                    <li><a href="https://docs.unity3d.com/Manual/JSONSerialization.html" target="_blank" rel="noopener">Manual — JSON Serialization</a></li>
+                </ul>
+
+                <h3>🚀 What's Next?</h3>
+                <p>That completes <strong>Module 4 — Systems and Managers</strong>: state, UI, and persistence — the scaffolding of a complete game. Module 5 sharpens quality. Lesson 5.1, <em>Unity Performance and Memory</em>, tackles the GC and per-frame costs we've been flagging all course — caching, avoiding allocations in <code>Update</code>, and object pooling.</p>
+
+                <!-- Encouragement Card -->
+                <div class="card card-accent" style="text-align: center; padding: 2rem;">
+                    <h3>🎉 Module 4 complete!</h3>
+                    <p>Your game remembers. State, interface, and now saved progress — the loop is whole. Next we make it fast and robust.</p>
+                </div>
+            </section>
+
+            <!-- Lesson Navigation -->
+            <nav class="lesson-nav" aria-label="Lesson Navigation">
+                <a href="lesson_11.html" class="prev-lesson">← Previous: Lesson 4.2 — UI Scripting</a>
+                <a href="index.html" class="home-link">🏠 Course Home</a>
+                <a href="lesson_13.html" class="next-lesson">Next: Lesson 5.1 — Unity Performance and Memory →</a>
+            </nav>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+        <p>&copy; 2026 Ray de la Paz. All rights reserved.</p>
+        <div class="footer-links">
+            <a href="https://rays-home.netlify.app/">Ray's House of Fun</a>
+            <a href="https://rays-home.netlify.app/contact">Contact</a>
+            <a href="#" id="print-button">Print Page</a>
+        </div>
+        <p><small>Press <kbd>?</kbd> for keyboard shortcuts</small></p>
+    </footer>
+
+    <!-- JavaScript -->
+    <script src="js/clipboard.js"></script>
+    <script src="js/course-enhancements.js"></script>
+</body>
+</html>
